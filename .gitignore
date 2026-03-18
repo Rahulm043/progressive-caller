@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.local
+cloud_secrets.env
 
 # Python virtual environment
 .venv/
@@ -11,3 +12,11 @@ __pycache__/
 # IDE settings
 .vscode/
 .idea/
+.DS_Store
+
+# Project specific exclusions
+InboundAIVoice/
+node_modules/
+.next/
+dist/
+build/
