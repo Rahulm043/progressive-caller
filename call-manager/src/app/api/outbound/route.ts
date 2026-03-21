@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { AgentDispatchClient } from 'livekit-server-sdk';
 import { createClient } from '@supabase/supabase-js';
+import {
+    DEFAULT_AGENT_RUNTIME_CONFIG,
+    resolveAgentRuntimeConfig,
+    type AgentRuntimeConfig,
+} from '@/lib/agent-presets';
 
 const LIVEKIT_URL = process.env.LIVEKIT_URL;
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
@@ -9,9 +14,17 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+const isMissingColumnError = (error: { code?: string | null; message?: string | null } | null | undefined, columnName: string) => {
+    if (!error) return false;
+    if (error.code === '42703' || error.code === 'PGRST204') return true;
+    return typeof error.message === 'string' && error.message.includes(columnName);
+};
+
 export async function POST(req: Request) {
     try {
-        const { phoneNumber } = await req.json();
+        const body = await req.json();
+        const phoneNumber = body?.phoneNumber;
+        const agentConfig = body?.agentConfig as Partial<AgentRuntimeConfig> | undefined;
 
         if (!phoneNumber) {
             return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
@@ -23,17 +36,40 @@ export async function POST(req: Request) {
 
         const supabase = createClient(supabaseUrl, supabaseKey);
         const roomName = `call-${phoneNumber.replace('+', '')}-${Math.floor(Math.random() * 10000)}`;
+        const resolvedAgentConfig = resolveAgentRuntimeConfig(
+            agentConfig?.presetId || DEFAULT_AGENT_RUNTIME_CONFIG.presetId,
+            agentConfig,
+        );
+
+        const callInsertPayload = {
+            phone_number: phoneNumber,
+            status: 'dispatching',
+            livekit_room_name: roomName,
+            preset_id: resolvedAgentConfig.presetId,
+            agent_config: resolvedAgentConfig,
+        };
 
         // 1. Create a record in Supabase first
-        const { data: callRecord, error: dbError } = await supabase
+        let insertResult = await supabase
             .from('calls')
-            .insert({
-                phone_number: phoneNumber,
-                status: 'dispatching',
-                livekit_room_name: roomName
-            })
+            .insert(callInsertPayload)
             .select()
             .single();
+
+        if (isMissingColumnError(insertResult.error, 'agent_config') || isMissingColumnError(insertResult.error, 'preset_id')) {
+            console.warn('Supabase schema does not include preset_id/agent_config yet; retrying with the base call payload.');
+            insertResult = await supabase
+                .from('calls')
+                .insert({
+                    phone_number: phoneNumber,
+                    status: 'dispatching',
+                    livekit_room_name: roomName,
+                })
+                .select()
+                .single();
+        }
+
+        const { data: callRecord, error: dbError } = insertResult;
 
         if (dbError) {
             console.error('Supabase Insert Error:', dbError);
@@ -51,12 +87,23 @@ export async function POST(req: Request) {
             {
                 metadata: JSON.stringify({
                     phone_number: phoneNumber,
-                    call_id: callRecord.id
+                    call_id: callRecord.id,
+                    preset_id: resolvedAgentConfig.presetId,
+                    agent_config: resolvedAgentConfig,
                 })
             }
         );
 
         console.log('Agent Dispatched Successfully:', dispatch.id);
+
+        const { error: dispatchUpdateError } = await supabase
+            .from('calls')
+            .update({ dispatch_id: dispatch.id, status: 'in_progress' })
+            .eq('id', callRecord.id);
+
+        if (dispatchUpdateError) {
+            console.error('Failed to store dispatch_id:', dispatchUpdateError);
+        }
 
         return NextResponse.json({
             success: true,
@@ -65,12 +112,12 @@ export async function POST(req: Request) {
             participantId: dispatch.id
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Call Trigger Error:', error);
         // Return the specific error message from LiveKit for better debugging
         return NextResponse.json({
-            error: error.message || 'Internal Server Error',
-            details: error.toString()
+            error: error instanceof Error ? error.message : 'Internal Server Error',
+            details: error instanceof Error ? error.toString() : String(error)
         }, { status: 500 });
     }
 }

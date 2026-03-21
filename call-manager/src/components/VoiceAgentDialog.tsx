@@ -5,41 +5,48 @@ import {
     LiveKitRoom,
     RoomAudioRenderer,
     BarVisualizer,
-    useTracks,
-    TrackReferenceOrPlaceholder,
-    useTrackTranscription,
     useRoomContext,
 } from '@livekit/components-react';
-import { Track, RoomEvent } from 'livekit-client';
-import { X, Mic, MicOff, MessageSquare, Power } from 'lucide-react';
+import { ConnectionState, RoomEvent } from 'livekit-client';
+import { X, MessageSquare, Power } from 'lucide-react';
+import { AgentRuntimeConfig } from '@/lib/agent-presets';
 import styles from './VoiceAgentDialog.module.css';
 
 interface VoiceAgentDialogProps {
     isOpen: boolean;
     onClose: () => void;
+    agentConfig: AgentRuntimeConfig;
 }
 
-export const VoiceAgentDialog = ({ isOpen, onClose }: VoiceAgentDialogProps) => {
+export const VoiceAgentDialog = ({ isOpen, onClose, agentConfig }: VoiceAgentDialogProps) => {
     const [token, setToken] = useState<string | null>(null);
+    const [roomName, setRoomName] = useState<string | null>(null);
     const [isConnecting, setIsConnecting] = useState(false);
-    const roomName = 'web_testing_room';
 
     useEffect(() => {
         if (isOpen) {
             const fetchToken = async () => {
                 setIsConnecting(true);
                 try {
-                    // Unique room per user session to avoid crosstalk
-                    const roomName = `web-test-${Math.floor(Math.random() * 10000)}`;
-                    const resp = await fetch(`/api/token?room=${roomName}&publish=true&dispatch=true`);
+                    const resp = await fetch('/api/token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            agentConfig,
+                            displayName: 'Frontend Tester',
+                        }),
+                    });
                     const data = await resp.json();
                     if (data.token) {
                         setToken(data.token);
+                        setRoomName(data.roomName || null);
                     } else {
                         throw new Error(data.error || 'Failed to get token');
                     }
-                } catch (e) {
-                    console.error('Failed to fetch token:', e);
+                } catch (error) {
+                    console.error('Failed to fetch token:', error);
                 } finally {
                     setIsConnecting(false);
                 }
@@ -47,8 +54,9 @@ export const VoiceAgentDialog = ({ isOpen, onClose }: VoiceAgentDialogProps) => 
             fetchToken();
         } else {
             setToken(null);
+            setRoomName(null);
         }
-    }, [isOpen]);
+    }, [agentConfig, isOpen]);
 
     if (!isOpen) return null;
 
@@ -58,7 +66,12 @@ export const VoiceAgentDialog = ({ isOpen, onClose }: VoiceAgentDialogProps) => 
                 <header className={styles.header}>
                     <div className={styles.titleGroup}>
                         <div className={styles.liveIndicator} />
-                        <h2>Talk to the Agent</h2>
+                        <div>
+                            <h2>Talk to the Agent</h2>
+                            <p style={{ margin: '0.25rem 0 0', color: '#666', fontSize: '0.8rem' }}>
+                                {agentConfig.presetId} {roomName ? `· ${roomName}` : ''}
+                            </p>
+                        </div>
                     </div>
                     <button className={styles.closeBtn} onClick={onClose}>
                         <X size={20} />
@@ -111,14 +124,25 @@ export const VoiceAgentDialog = ({ isOpen, onClose }: VoiceAgentDialogProps) => 
 
 const TranscriptView = () => {
     const [messages, setMessages] = useState<{ sender: string; text: string }[]>([]);
+    const [connectionState, setConnectionState] = useState<ConnectionState | 'unknown'>('unknown');
     const scrollRef = useRef<HTMLDivElement>(null);
     const room = useRoomContext();
 
     useEffect(() => {
         if (!room) return;
-        const handleData = (payload: Uint8Array) => {
+
+        const handleConnectionStateChanged = (state: ConnectionState) => {
+            setConnectionState(state);
+        };
+
+        const handleData = (payload: Uint8Array | string | ArrayBuffer) => {
             const decoder = new TextDecoder();
-            const str = decoder.decode(payload);
+            const str =
+                typeof payload === 'string'
+                    ? payload
+                    : payload instanceof ArrayBuffer
+                        ? decoder.decode(new Uint8Array(payload))
+                        : decoder.decode(payload);
             try {
                 const data = JSON.parse(str);
                 if (data.type === 'user_transcript') {
@@ -126,13 +150,15 @@ const TranscriptView = () => {
                 } else if (data.type === 'agent_transcript') {
                     setMessages(prev => [...prev, { sender: 'Agent', text: data.text }]);
                 }
-            } catch (e) {
+            } catch {
                 console.error('Failed to parse data:', str);
             }
         };
 
+        room.on(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
         room.on(RoomEvent.DataReceived, handleData);
         return () => {
+            room.off(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
             room.off(RoomEvent.DataReceived, handleData);
         };
     }, [room]);
@@ -145,6 +171,9 @@ const TranscriptView = () => {
 
     return (
         <div className={styles.transcriptList} ref={scrollRef}>
+            <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                Room status: {room?.state ?? connectionState}
+            </div>
             {messages.length === 0 ? (
                 <div className={styles.emptyTranscript}>
                     Speak to start the conversation.

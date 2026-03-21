@@ -7,6 +7,8 @@ CREATE TABLE public.calls (
     status TEXT NOT NULL DEFAULT 'queued', -- 'queued', 'in_progress', 'completed', 'failed'
     livekit_room_name TEXT,
     dispatch_id TEXT,
+    preset_id TEXT,
+    agent_config JSONB,
     duration_seconds INTEGER,
     transcript JSONB,
     recording_url TEXT

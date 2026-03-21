@@ -44,10 +44,24 @@ export function useAgentAudioVisualizerWave({
   state,
   audioTrack,
 }: UseAgentAudioVisualizerWaveAnimatorArgs) {
-  const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const { value: amplitude, animate: animateAmplitude } = useAnimatedValue(DEFAULT_AMPLITUDE);
   const { value: frequency, animate: animateFrequency } = useAnimatedValue(DEFAULT_FREQUENCY);
   const { value: opacity, animate: animateOpacity } = useAnimatedValue(1.0);
+
+  const speed = (() => {
+    switch (state) {
+      case 'thinking':
+      case 'connecting':
+      case 'initializing':
+        return DEFAULT_SPEED * 4;
+      case 'speaking':
+        return DEFAULT_SPEED * 2;
+      case 'disconnected':
+      case 'listening':
+      default:
+        return DEFAULT_SPEED;
+    }
+  })();
 
   const volume = useTrackVolume(audioTrack as TrackReference, {
     fftSize: 512,
@@ -57,13 +71,11 @@ export function useAgentAudioVisualizerWave({
   useEffect(() => {
     switch (state) {
       case 'disconnected':
-        setSpeed(DEFAULT_SPEED);
         animateAmplitude(0, DEFAULT_TRANSITION);
         animateFrequency(0, DEFAULT_TRANSITION);
         animateOpacity(1.0, DEFAULT_TRANSITION);
         return;
       case 'listening':
-        setSpeed(DEFAULT_SPEED);
         animateAmplitude(DEFAULT_AMPLITUDE, DEFAULT_TRANSITION);
         animateFrequency(DEFAULT_FREQUENCY, DEFAULT_TRANSITION);
         animateOpacity([1.0, 0.3], {
@@ -75,7 +87,6 @@ export function useAgentAudioVisualizerWave({
       case 'thinking':
       case 'connecting':
       case 'initializing':
-        setSpeed(DEFAULT_SPEED * 4);
         animateAmplitude(DEFAULT_AMPLITUDE / 4, DEFAULT_TRANSITION);
         animateFrequency(DEFAULT_FREQUENCY * 4, DEFAULT_TRANSITION);
         animateOpacity([1.0, 0.3], {
@@ -86,13 +97,12 @@ export function useAgentAudioVisualizerWave({
         return;
       case 'speaking':
       default:
-        setSpeed(DEFAULT_SPEED * 2);
         animateAmplitude(DEFAULT_AMPLITUDE, DEFAULT_TRANSITION);
         animateFrequency(DEFAULT_FREQUENCY, DEFAULT_TRANSITION);
         animateOpacity(1.0, DEFAULT_TRANSITION);
         return;
     }
-  }, [state, setSpeed, animateAmplitude, animateFrequency, animateOpacity]);
+  }, [state, animateAmplitude, animateFrequency, animateOpacity]);
 
   useEffect(() => {
     if (state === 'speaking') {

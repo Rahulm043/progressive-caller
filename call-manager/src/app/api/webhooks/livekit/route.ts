@@ -34,13 +34,10 @@ export async function POST(req: Request) {
         if (event.event === 'room_finished') {
             const roomName = event.room?.name;
             if (roomName) {
-                // Find and mark as completed if not already done by agent
-                const { data, error } = await supabase
+                // Mark completed only if the agent has not already finalized the row.
+                const { error } = await supabase
                     .from('calls')
-                    .update({
-                        status: 'completed',
-                        duration_seconds: event.room?.emptyTimeout ? 0 : 60 // room duration is harder to get from basic event
-                    })
+                    .update({ status: 'completed' })
                     .eq('livekit_room_name', roomName)
                     .neq('status', 'completed'); // Only update if agent didn't already
 
@@ -50,8 +47,8 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success: true });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Webhook Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }

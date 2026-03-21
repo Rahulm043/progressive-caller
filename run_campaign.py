@@ -32,26 +32,50 @@ if not (LK_URL and LK_API_KEY and LK_API_SECRET):
     print("Error: LiveKit credentials missing.")
     exit(1)
 
+def _coerce_agent_config(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return None
+    return None
+
+
 async def dispatch_call(call_record):
     lk_api = api.LiveKitAPI(url=LK_URL, api_key=LK_API_KEY, api_secret=LK_API_SECRET)
     phone_number = call_record['phone_number']
     call_id = call_record['id']
+    agent_config = _coerce_agent_config(call_record.get('agent_config'))
+    preset_id = call_record.get('preset_id')
     
     room_name = f"call-{phone_number.replace('+', '')}-{random.randint(1000, 9999)}"
     print(f"[{time.strftime('%X')}] Dispatching call to {phone_number} (Room: {room_name})")
 
     try:
+        metadata = {
+            "phone_number": phone_number,
+            "call_id": call_id,
+        }
+        if preset_id:
+            metadata["preset_id"] = preset_id
+        if agent_config:
+            metadata["agent_config"] = agent_config
+
         dispatch_request = api.CreateAgentDispatchRequest(
             agent_name="outbound-caller", 
             room=room_name,
-            metadata=json.dumps({"phone_number": phone_number, "call_id": call_id})
+            metadata=json.dumps(metadata)
         )
         
         dispatch = await lk_api.agent_dispatch.create_dispatch(dispatch_request)
         
         # Update DB with room and dispatch info
         supabase.table('calls').update({
-            "status": "active",
+            "status": "in_progress",
             "livekit_room_name": room_name,
             "dispatch_id": dispatch.id
         }).eq("id", call_id).execute()
@@ -82,7 +106,10 @@ def process_queue():
                 print(f"Found queued call for {call['phone_number']}. Preparing dispatch...")
                 
                 # Mark as dispatching to prevent duplicate processing
-                supabase.table('calls').update({"status": "dispatching"}).eq("id", call['id']).execute()
+                claim = supabase.table('calls').update({"status": "dispatching"}).eq("id", call['id']).eq("status", "queued").select("id").execute()
+                if not claim.data:
+                    print("Call was already claimed by another runner, skipping.")
+                    continue
                 
                 # Run the async dispatch
                 asyncio.run(dispatch_call(call))

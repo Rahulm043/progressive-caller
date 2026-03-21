@@ -1,7 +1,7 @@
 'use client';
 
 import { type ComponentProps } from 'react';
-import { type AgentState, type ReceivedMessage } from '@livekit/components-react';
+import { type AgentState } from '@livekit/components-react';
 import {
   Conversation,
   ConversationContent,
@@ -10,6 +10,15 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { AgentChatIndicator } from '@/components/agent-chat-indicator';
 import { AnimatePresence } from 'motion/react';
+
+export interface TranscriptMessage {
+  id: string;
+  timestamp: number;
+  from: {
+    isLocal: boolean;
+  };
+  message: string;
+}
 
 /**
  * Props for the AgentChatTranscript component.
@@ -23,7 +32,7 @@ export interface AgentChatTranscriptProps extends ComponentProps<'div'> {
    * Array of messages to display in the transcript.
    * @defaultValue []
    */
-  messages?: ReceivedMessage[];
+  messages?: TranscriptMessage[];
   /**
    * Additional CSS class names to apply to the conversation container.
    */
