@@ -20,11 +20,14 @@ const isMissingColumnError = (error: { code?: string | null; message?: string | 
     return typeof error.message === 'string' && error.message.includes(columnName);
 };
 
+type Mode = 'now' | 'queue';
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
         const phoneNumber = body?.phoneNumber;
         const agentConfig = body?.agentConfig as Partial<AgentRuntimeConfig> | undefined;
+        const mode: Mode = body?.mode === 'now' ? 'now' : 'queue';
 
         if (!phoneNumber) {
             return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
@@ -41,12 +44,31 @@ export async function POST(req: Request) {
             agentConfig,
         );
 
+        // Determine sequence: "now" should go to the front of the queue
+        let sequenceOverride: number | undefined;
+        if (mode === 'now') {
+            const { data: head, error: headErr } = await supabase
+                .from('calls')
+                .select('sequence')
+                .eq('status', 'queued')
+                .order('sequence', { ascending: true })
+                .limit(1)
+                .single();
+            if (headErr && headErr.code && !['PGRST116', 'PGRST204'].includes(headErr.code)) {
+                console.warn('Failed to fetch head sequence for call-now:', headErr);
+            }
+            const headSeq = head?.sequence ?? 0;
+            sequenceOverride = headSeq - 1;
+        }
+
         const callInsertPayload = {
             phone_number: phoneNumber,
             status: 'dispatching',
             livekit_room_name: roomName,
             preset_id: resolvedAgentConfig.presetId,
             agent_config: resolvedAgentConfig,
+            agent_config_snapshot: resolvedAgentConfig,
+            sequence: sequenceOverride,
         };
 
         // 1. Create a record in Supabase first

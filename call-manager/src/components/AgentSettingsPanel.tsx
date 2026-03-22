@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { CheckCircle2, Languages, Mic, MessageSquareText, Speaker } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, Languages, Mic, MessageSquareText, PencilLine, RotateCcw, Save, Speaker, X } from 'lucide-react';
 import {
   AGENT_PRESETS,
   AgentPresetId,
@@ -14,13 +14,58 @@ import styles from './AgentSettingsPanel.module.css';
 interface AgentSettingsPanelProps {
   value: AgentRuntimeConfig;
   onChange: (next: AgentRuntimeConfig) => void;
+  onSavePrompt: (presetId: AgentPresetId, prompt: string) => Promise<void>;
+  promptOverrides?: Record<string, string>;
 }
 
-export function AgentSettingsPanel({ value, onChange }: AgentSettingsPanelProps) {
+export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverrides = {} }: AgentSettingsPanelProps) {
   const activePreset = getAgentPreset(value.presetId);
+  const [isPromptEditing, setIsPromptEditing] = useState(false);
+  const [promptDraft, setPromptDraft] = useState(value.prompt);
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
 
   const handlePresetChange = (presetId: AgentPresetId) => {
-    onChange(resolveAgentRuntimeConfig(presetId));
+    const savedPrompt = promptOverrides[presetId];
+    onChange(resolveAgentRuntimeConfig(presetId, savedPrompt ? { prompt: savedPrompt } : {}));
+    setIsPromptEditing(false);
+  };
+
+  useEffect(() => {
+    if (!isPromptEditing) {
+      setPromptDraft(value.prompt);
+    }
+  }, [isPromptEditing, value.prompt, value.presetId]);
+
+  const handleStartEditing = () => {
+    setPromptError(null);
+    setPromptDraft(value.prompt);
+    setIsPromptEditing(true);
+  };
+
+  const handleCancelEditing = () => {
+    setPromptError(null);
+    setPromptDraft(value.prompt);
+    setIsPromptEditing(false);
+  };
+
+  const handleSavePrompt = async () => {
+    const nextPrompt = promptDraft.trim();
+    if (!nextPrompt) {
+      setPromptError('Prompt cannot be empty.');
+      return;
+    }
+
+    setIsSavingPrompt(true);
+    setPromptError(null);
+    try {
+      await onSavePrompt(value.presetId, nextPrompt);
+      setIsPromptEditing(false);
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : 'Failed to save prompt.');
+    } finally {
+      setIsSavingPrompt(false);
+    }
   };
 
   return (
@@ -127,18 +172,56 @@ export function AgentSettingsPanel({ value, onChange }: AgentSettingsPanelProps)
         </label>
       </div>
 
-      <label className={styles.promptField}>
-        <span className={styles.promptLabel}>Prompt</span>
+      <div className={styles.promptField}>
+        <div className={styles.promptHeader}>
+          <span className={styles.promptLabel}>Prompt</span>
+          <div className={styles.promptActions}>
+            {!isPromptEditing ? (
+              <button type="button" className={styles.ghostButton} onClick={handleStartEditing}>
+                <PencilLine size={14} />
+                Edit prompt
+              </button>
+            ) : (
+              <>
+                <button type="button" className={styles.ghostButton} onClick={handleCancelEditing} disabled={isSavingPrompt}>
+                  <X size={14} />
+                  Cancel
+                </button>
+                <button type="button" className={styles.primaryButton} onClick={handleSavePrompt} disabled={isSavingPrompt}>
+                  <Save size={14} />
+                  {isSavingPrompt ? 'Saving...' : 'Save prompt'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
         <textarea
           className={styles.promptTextarea}
-          value={value.prompt}
-          onChange={(event) => onChange({ ...value, prompt: event.target.value })}
+          value={isPromptEditing ? promptDraft : value.prompt}
+          onChange={(event) => setPromptDraft(event.target.value)}
           rows={10}
+          readOnly={!isPromptEditing}
         />
-        <span className={styles.helperText}>
-          Language is locked to the selected preset and is already baked into the effective prompt.
-        </span>
-      </label>
+        <div className={styles.promptFooter}>
+          <span className={styles.helperText}>
+            Language is locked to the selected preset and is already baked into the effective prompt.
+          </span>
+          {!isPromptEditing && (
+            <button
+              type="button"
+              className={styles.resetButton}
+              onClick={() => {
+                setPromptDraft(activePreset.defaultConfig.prompt);
+                setIsPromptEditing(true);
+              }}
+            >
+              <RotateCcw size={14} />
+              Reset to default
+            </button>
+          )}
+        </div>
+        {promptError && <div className={styles.promptError}>{promptError}</div>}
+      </div>
 
       <div className={styles.summary}>
         <div>

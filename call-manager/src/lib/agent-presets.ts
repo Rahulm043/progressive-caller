@@ -34,6 +34,12 @@ export interface AgentPresetDefinition {
   defaultConfig: AgentRuntimeConfig;
 }
 
+export interface AgentPresetPromptRecord {
+  presetId: AgentPresetId;
+  prompt: string;
+  updatedAt?: string | null;
+}
+
 const PROMPT_TAIL = `Speak naturally, briefly, and without sounding scripted.
 Keep responses conversational, human, and adaptable to the user.
 Use one short sentence when possible, and ask one relevant question if it helps the flow.

@@ -7,19 +7,21 @@ import styles from './NewCallModal.module.css';
 interface NewCallModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onLaunch: (phoneNumber: string) => void;
+    onLaunch: (phoneNumber: string, mode: 'now' | 'queue') => void;
+    queuedCount: number;
 }
 
-export const NewCallModal: React.FC<NewCallModalProps> = ({ isOpen, onClose, onLaunch }) => {
+export const NewCallModal: React.FC<NewCallModalProps> = ({ isOpen, onClose, onLaunch, queuedCount }) => {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [isLaunching, setIsLaunching] = useState(false);
+    const [mode, setMode] = useState<'now' | 'queue'>('now');
 
     if (!isOpen) return null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLaunching(true);
-        await onLaunch(phoneNumber);
+        await onLaunch(phoneNumber, mode);
         setIsLaunching(false);
         onClose();
     };
@@ -51,6 +53,28 @@ export const NewCallModal: React.FC<NewCallModalProps> = ({ isOpen, onClose, onL
                             />
                         </div>
                     </div>
+
+                    {queuedCount > 0 && (
+                        <div className={styles.toggleRow}>
+                            <label className={styles.toggleLabel}>Call timing</label>
+                            <div className={styles.toggleGroup}>
+                                <button
+                                    type="button"
+                                    className={`${styles.toggleBtn} ${mode === 'now' ? styles.toggleActive : ''}`}
+                                    onClick={() => setMode('now')}
+                                >
+                                    Call now (next)
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`${styles.toggleBtn} ${mode === 'queue' ? styles.toggleActive : ''}`}
+                                    onClick={() => setMode('queue')}
+                                >
+                                    Add to queue
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     <div className={styles.actions}>
                         <button type="button" className={styles.cancelBtn} onClick={onClose}>

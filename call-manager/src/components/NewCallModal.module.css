@@ -65,6 +65,46 @@
     gap: 1.5rem;
 }
 
+.toggleRow {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.toggleLabel {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #94a3b8;
+}
+
+.toggleGroup {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+}
+
+.toggleBtn {
+    border: 1px solid var(--card-border);
+    border-radius: 0.75rem;
+    padding: 0.85rem;
+    background: #0d0f14;
+    color: #e2e8f0;
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.toggleBtn:hover {
+    border-color: var(--accent);
+    color: white;
+}
+
+.toggleActive {
+    border-color: var(--accent);
+    background: rgba(13, 204, 242, 0.08);
+    color: white;
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
 .field {
     display: flex;
     flex-direction: column;

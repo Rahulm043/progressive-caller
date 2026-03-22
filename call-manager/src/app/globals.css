@@ -1,15 +1,22 @@
 :root {
-  --background: #0a0c10;
-  --foreground: #e1e7ef;
-  --card-bg: #14171d;
-  --card-border: #242933;
-  --accent: #0dccf2;
-  --accent-glow: rgba(13, 204, 242, 0.2);
-  --sidebar-bg: #0d0f14;
-  --status-connected: #10b981;
+  --background: #060912;
+  --background-elevated: #0b1220;
+  --foreground: #e8eef7;
+  --foreground-muted: #95a4b7;
+  --card-bg: rgba(10, 17, 30, 0.78);
+  --card-bg-strong: rgba(13, 20, 35, 0.92);
+  --card-border: rgba(148, 163, 184, 0.16);
+  --accent: #6ee7ff;
+  --accent-strong: #38bdf8;
+  --accent-warm: #f59e0b;
+  --accent-glow: rgba(110, 231, 255, 0.24);
+  --accent-glow-warm: rgba(245, 158, 11, 0.18);
+  --status-connected: #22c55e;
   --status-ringing: #f59e0b;
   --status-transcribing: #a855f7;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.35);
+  --font-sans: "Manrope", system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
 }
 
 * {
@@ -25,6 +32,28 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  min-height: 100%;
+}
+
+body {
+  position: relative;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 32%),
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.08), transparent 28%),
+    linear-gradient(180deg, #05070d 0%, #08101d 38%, #060912 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 92%);
+  opacity: 0.45;
 }
 
 a {
@@ -40,41 +69,33 @@ button {
   transition: all 0.2s ease;
 }
 
-/* Sidebar Layout */
-.app-container {
-  display: flex;
-  min-height: 100vh;
-}
-
-.sidebar {
-  width: 260px;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--card-border);
-  padding: 2rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-}
-
-.main-content {
-  flex: 1;
-  padding: 2rem 3rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2.5rem;
-}
-
-/* Typography */
 h1 {
-  font-size: 1.875rem;
-  font-weight: 700;
-  color: white;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: #ffffff;
 }
 
 h2 {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
   font-weight: 600;
-  margin-bottom: 1rem;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+}
+
+h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+::selection {
+  background: rgba(110, 231, 255, 0.28);
+  color: #f8fafc;
 }
 
 /* Custom Scrollbar */
@@ -92,5 +113,5 @@ h2 {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #30363d;
+  background: #44546a;
 }

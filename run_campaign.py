@@ -98,15 +98,31 @@ def process_queue():
     
     while True:
         try:
-            # Fetch 1 queued call
-            response = supabase.table('calls').select("*").eq("status", "queued").order('created_at').limit(1).execute()
+            # Fetch the next queued call ordered by sequence; respect starts_at when present
+            now_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            response = (
+                supabase.table('calls')
+                .select("*")
+                .eq("status", "queued")
+                .or_(f"starts_at.is.null,starts_at.lte.{now_iso}")
+                .order('sequence', desc=False)
+                .limit(1)
+                .execute()
+            )
             
             if response.data and len(response.data) > 0:
                 call = response.data[0]
                 print(f"Found queued call for {call['phone_number']}. Preparing dispatch...")
                 
                 # Mark as dispatching to prevent duplicate processing
-                claim = supabase.table('calls').update({"status": "dispatching"}).eq("id", call['id']).eq("status", "queued").select("id").execute()
+                claim = (
+                    supabase.table('calls')
+                    .update({"status": "dispatching"})
+                    .eq("id", call['id'])
+                    .eq("status", "queued")
+                    .select("id")
+                    .execute()
+                )
                 if not claim.data:
                     print("Call was already claimed by another runner, skipping.")
                     continue

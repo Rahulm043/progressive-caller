@@ -1,0 +1,159 @@
+.shell {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}
+
+.meta {
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.actions button {
+  border: 1px solid var(--card-border);
+  background: #0d0f14;
+  color: #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.9rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.section {
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.snapshotGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+  border: 1px dashed var(--card-border);
+  border-radius: 0.75rem;
+  cursor: pointer;
+}
+
+.error {
+  padding: 0.8rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  color: #fecdd3;
+}
+
+.drawerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 1000;
+}
+
+.drawer {
+  background: #0b0f17;
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  width: min(900px, 95vw);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.filterBar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filterBtn {
+  border: 1px solid var(--card-border);
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.65rem;
+  color: #e2e8f0;
+  background: #0d0f14;
+}
+
+.filterActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  color: white;
+}
+
+.closeBtn {
+  border: 1px solid var(--card-border);
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.6rem;
+}
+
+.transcriptBox {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--card-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  overflow: auto;
+}

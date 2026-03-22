@@ -126,21 +126,79 @@
   margin-top: 1rem;
 }
 
+.promptHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .promptLabel {
   color: #cbd5e1;
   font-size: 0.9rem;
   font-weight: 600;
 }
 
+.promptActions,
+.promptFooter {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.promptFooter {
+  justify-content: space-between;
+}
+
 .promptTextarea {
   min-height: 220px;
   resize: vertical;
   line-height: 1.55;
+  font-family: inherit;
+  white-space: pre-wrap;
 }
 
 .helperText {
   color: #64748b;
   font-size: 0.8rem;
+}
+
+.promptError {
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.ghostButton,
+.primaryButton,
+.resetButton {
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 0.5rem 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ghostButton,
+.resetButton {
+  background: rgba(255, 255, 255, 0.03);
+  color: #cbd5e1;
+}
+
+.primaryButton {
+  background: rgba(13, 204, 242, 0.16);
+  color: #dffbff;
+  border-color: rgba(13, 204, 242, 0.35);
+}
+
+.ghostButton:disabled,
+.primaryButton:disabled,
+.resetButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .summary {

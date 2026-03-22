@@ -5,6 +5,7 @@ import {
     resolveAgentRuntimeConfig,
     type AgentRuntimeConfig,
 } from '@/lib/agent-presets';
+import { CampaignCreateSchema } from './schema';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -24,24 +25,44 @@ export async function POST(req: Request) {
 
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        const body = await req.json();
-        const phoneNumbers = body?.phoneNumbers;
-        const agentConfig = body?.agentConfig as Partial<AgentRuntimeConfig> | undefined;
-        const resolvedAgentConfig = resolveAgentRuntimeConfig(
-            agentConfig?.presetId || DEFAULT_AGENT_RUNTIME_CONFIG.presetId,
-            agentConfig,
-        );
-
-        if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
-            return NextResponse.json({ error: 'An array of phone numbers is required' }, { status: 400 });
+        const parsed = CampaignCreateSchema.safeParse(await req.json());
+        if (!parsed.success) {
+            return NextResponse.json({ error: parsed.error.message }, { status: 400 });
         }
 
+        const { phoneNumbers, agentConfig, presetId, startsAt, name } = parsed.data;
+        const resolvedAgentConfig = resolveAgentRuntimeConfig(
+            presetId || DEFAULT_AGENT_RUNTIME_CONFIG.presetId,
+            agentConfig as Partial<AgentRuntimeConfig>,
+        );
+        const starts_at = startsAt ? new Date(startsAt).toISOString() : null;
+
         // Format data for bulk insert
+        const { data: campaign, error: campErr } = await supabase
+            .from('campaigns')
+            .insert({
+                name,
+                preset_id: resolvedAgentConfig.presetId,
+                agent_config_snapshot: resolvedAgentConfig,
+                starts_at,
+                status: starts_at ? 'scheduled' : 'running',
+            })
+            .select()
+            .single();
+
+        if (campErr || !campaign) {
+            console.error('Supabase Insert Error (campaign):', campErr);
+            return NextResponse.json({ error: campErr?.message || 'Failed to create campaign' }, { status: 500 });
+        }
+
         const callsToInsert = phoneNumbers.map((num: string) => ({
             phone_number: num.trim().startsWith('+') ? num.trim() : `+91${num.trim()}`, // Ensure proper formatting
             status: 'queued',
             preset_id: resolvedAgentConfig.presetId,
             agent_config: resolvedAgentConfig,
+            agent_config_snapshot: resolvedAgentConfig,
+            campaign_id: campaign.id,
+            starts_at,
         }));
 
         let insertResult = await supabase
@@ -67,7 +88,8 @@ export async function POST(req: Request) {
         return NextResponse.json({
             success: true,
             queuedCount: data.length,
-            calls: data
+            calls: data,
+            campaign,
         });
 
     } catch (error: unknown) {

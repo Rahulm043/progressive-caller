@@ -7,7 +7,6 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation';
-import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { AgentChatIndicator } from '@/components/agent-chat-indicator';
 import { AnimatePresence } from 'motion/react';
 
@@ -68,14 +67,31 @@ export function AgentChatTranscript({
           const locale = navigator?.language ?? 'en-US';
           const messageOrigin = from?.isLocal ? 'user' : 'assistant';
           const time = new Date(timestamp);
-          const title = time.toLocaleTimeString(locale, { timeStyle: 'full' });
+          const title = time.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+          const accentClasses =
+            messageOrigin === 'user'
+              ? 'border-cyan-500/20 bg-cyan-500/8'
+              : 'border-emerald-500/20 bg-emerald-500/8';
+          const labelClasses =
+            messageOrigin === 'user'
+              ? 'text-cyan-200'
+              : 'text-emerald-200';
 
           return (
-            <Message key={id} title={title} from={messageOrigin}>
-              <MessageContent>
-                <MessageResponse>{message}</MessageResponse>
-              </MessageContent>
-            </Message>
+            <div
+              key={id}
+              className={`w-full rounded-2xl border px-4 py-3 shadow-sm ${accentClasses} ${
+                messageOrigin === 'user' ? 'ml-auto max-w-[92%]' : 'mr-auto max-w-[92%]'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3 text-[0.72rem] uppercase tracking-[0.14em] text-slate-400">
+                <span className={labelClasses}>{messageOrigin === 'user' ? 'Caller' : 'Agent'}</span>
+                <span>{title}</span>
+              </div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                {message}
+              </div>
+            </div>
           );
         })}
         <AnimatePresence>

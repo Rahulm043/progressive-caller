@@ -603,9 +603,7 @@ async def _resolve_call_record_id(
 
 
 async def _summarize_session(chat_ctx: ChatContext) -> str | None:
-    summary_ctx = ChatContext()
-    summary_ctx.add_message(role="system", content="Summarize the call in a concise, business-friendly way.")
-
+    summary_lines: list[str] = []
     n_summarized = 0
     for item in chat_ctx.items:
         if item.type != "message":
@@ -617,11 +615,22 @@ async def _summarize_session(chat_ctx: ChatContext) -> str | None:
 
         text = (item.text_content or "").strip()
         if text:
-            summary_ctx.add_message(role="user", content=f"{item.role}: {text}")
+            summary_lines.append(f"{item.role.title()}: {text}")
             n_summarized += 1
 
     if n_summarized == 0:
         return None
+
+    summary_ctx = ChatContext()
+    summary_ctx.add_message(
+        role="system",
+        content=(
+            "Summarize the transcript below in a concise, business-friendly way. "
+            "Use only the transcript content. Do not repeat the last line as the summary. "
+            "Do not mention that you are summarizing. Return a clean summary paragraph or short bullets."
+        ),
+    )
+    summary_ctx.add_message(role="user", content="\n".join(summary_lines).strip())
 
     summarizer = inference.LLM(model="openai/gpt-4o-mini")
     response = await summarizer.chat(chat_ctx=summary_ctx).collect()
@@ -635,7 +644,17 @@ async def _persist_call_summary(ctx: JobContext) -> None:
         return
 
     report = ctx.make_session_report()
-    summary = await _summarize_session(report.chat_history)
+    telemetry: CallTelemetry | None = ctx.proc.userdata.get("telemetry")
+    summary_source = ChatContext()
+    if telemetry and telemetry.messages:
+        for message in telemetry.messages:
+            role = message.get("role")
+            content = (message.get("content") or "").strip()
+            if role in ("user", "assistant") and content:
+                summary_source.add_message(role=role, content=content)
+    else:
+        summary_source = report.chat_history
+    summary = await _summarize_session(summary_source)
 
     call_id = _coerce_text(ctx.proc.userdata.get("call_id"))
     phone_number = _coerce_text(ctx.proc.userdata.get("phone_number"))
@@ -654,7 +673,6 @@ async def _persist_call_summary(ctx: JobContext) -> None:
         logger.warning("Skipping Supabase summary write because the call row could not be resolved.")
         return
 
-    telemetry: CallTelemetry | None = ctx.proc.userdata.get("telemetry")
     final_status = ctx.proc.userdata.get("final_status", "completed")
     duration_seconds = 0
     if report.started_at:
