@@ -1,53 +1,53 @@
-'use client';
+﻿'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Activity,
-  Clock,
-  ChevronRight,
-  LayoutDashboard,
+  HelpCircle,
+  LogOut,
   Plus,
   PhoneCall,
   RefreshCw,
-  Sparkles,
-  Upload,
+  Settings,
   X,
+  LayoutDashboard,
+  Layers,
+  FilePlus,
+  ChevronDown,
+  MonitorPlay,
+  Play,
+  ArrowUpRight,
+  History as HistoryIcon,
+  Search
 } from 'lucide-react';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
 import { NewCallModal } from '@/components/NewCallModal';
 import { AgentSettingsPanel } from '@/components/AgentSettingsPanel';
 import { VoiceAgentDialog } from '@/components/VoiceAgentDialog';
 import { AgentChatTranscript } from '@/components/agent-chat-transcript';
+import { DashboardShell } from '@/components/DashboardShell';
 import {
   AgentRuntimeConfig,
   DEFAULT_AGENT_RUNTIME_CONFIG,
   resolveAgentRuntimeConfig,
+  AGENT_PRESETS
 } from '@/lib/agent-presets';
 import styles from './page.module.css';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
 const AGENT_RUNTIME_STORAGE_KEY = 'vobiz-agent-runtime-config';
-
-interface PresetPromptRecord {
-  presetId: string;
-  prompt: string;
-  updatedAt?: string | null;
-}
 
 interface Call {
   id: string;
   phone_number: string;
   status: string;
+  effective_status?: string;
+  is_active?: boolean;
+  is_stale_active?: boolean;
   created_at: string;
   sequence?: number | null;
   starts_at?: string | null;
   duration_seconds: number | null;
+  effective_duration_seconds?: number | null;
   transcript: TranscriptPayload | null;
-  livekit_room_name?: string | null;
-  dispatch_id?: string | null;
 }
 
 interface CampaignSummary {
@@ -56,7 +56,6 @@ interface CampaignSummary {
   preset_id: string;
   status: string;
   starts_at: string | null;
-  created_at: string;
   stats: {
     queued: number;
     active: number;
@@ -68,38 +67,25 @@ interface CampaignSummary {
 }
 
 interface TranscriptMessage {
-  type?: 'message';
   role?: string;
   content?: string;
   created_at?: string;
-}
-
-interface TranscriptMetric {
-  type?: 'metric' | 'event';
-  event_name?: string;
-  stage?: string | null;
-  latency_ms?: number | null;
-  created_at?: string;
-  metrics?: Record<string, unknown>;
-  payload?: Record<string, unknown> | unknown[];
 }
 
 interface TranscriptPayload {
   messages?: TranscriptMessage[];
   chat_history?: TranscriptMessage[];
   telemetry_messages?: TranscriptMessage[];
-  metrics?: TranscriptMetric[];
-  events?: TranscriptMetric[];
-  important_events?: TranscriptMetric[];
   summary?: string | null;
-  status?: string | null;
-  updated_at?: string;
 }
+
+type TranscriptFilter = 'all' | 'caller' | 'agent';
+type ActivityTab = 'campaigns' | 'logs';
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTestAgentOpen, setIsTestAgentOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isAgentEditorOpen, setIsAgentEditorOpen] = useState(false);
   const [calls, setCalls] = useState<Call[]>([]);
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,50 +97,33 @@ export default function Dashboard() {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [campaignsError, setCampaignsError] = useState<string | null>(null);
+  const [transcriptFilter, setTranscriptFilter] = useState<TranscriptFilter>('all');
+  const [activityTab, setActivityTab] = useState<ActivityTab>('logs');
+  const [isAccordionOpen, setIsAccordionOpen] = useState(false);
 
-  const syncSelectedCall = useCallback((nextCalls: Call[]) => {
-    setSelectedCall((current) => {
-      if (!current) return current;
-      const updated = nextCalls.find((call) => call.id === current.id);
-      return updated ?? current;
-    });
-  }, []);
-
-  const fetchCalls = useCallback(async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false;
-    if (!silent) {
-      setIsLoading(true);
-    }
+  const fetchCalls = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setError(null);
 
     try {
-      const { data, error: sbError } = await supabase
-        .from('calls')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (sbError) {
-        console.error('Supabase Error:', sbError);
-        setError(`Supabase Error: ${sbError.message} (Code: ${sbError.code})`);
-      } else {
-        const nextCalls = data || [];
-        setCalls(nextCalls);
-        syncSelectedCall(nextCalls);
+      const response = await fetch('/api/calls?limit=100');
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data?.error || 'Failed to fetch call updates');
+        return;
       }
-    } catch (fetchError: unknown) {
-      console.error('Fetch exception:', fetchError);
+      setCalls(data.calls || []);
+    } catch (fetchError) {
       setError(`Connection Exception: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
     } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
+      if (!silent) setIsLoading(false);
     }
-  }, [syncSelectedCall]);
+  }, []);
 
   const fetchCampaigns = useCallback(async () => {
     setCampaignsLoading(true);
     setCampaignsError(null);
+
     try {
       const res = await fetch('/api/campaigns/summary');
       const data = await res.json();
@@ -167,52 +136,21 @@ export default function Dashboard() {
     }
   }, []);
 
-  const clearLogs = async () => {
-    if (!window.confirm('Are you sure you want to clear ALL call logs from the database?')) return;
-
-    setIsLoading(true);
-    try {
-      const { error: clearError } = await supabase
-        .from('calls')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-
-      if (clearError) throw clearError;
-      setCalls([]);
-      setSelectedCall(null);
-    } catch (clearError: unknown) {
-      console.error('Error clearing logs:', clearError);
-      setError(clearError instanceof Error ? clearError.message : 'Unknown error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     setIsMounted(true);
     fetchCalls();
     fetchCampaigns();
 
-    const channel = supabase
-      .channel('calls-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, (payload) => {
-        const nextCall = payload.new as Call;
-        if (payload.eventType === 'INSERT') {
-          setCalls((prev) => [nextCall, ...prev]);
-        } else if (payload.eventType === 'UPDATE') {
-          setCalls((prev) => prev.map((call) => (call.id === nextCall.id ? nextCall : call)));
-        }
-        setSelectedCall((prev) => (prev && prev.id === nextCall.id ? nextCall : prev));
-      })
-      .subscribe();
-
     const refreshTimer = window.setInterval(() => {
-      fetchCalls({ silent: true });
+      fetchCalls(true);
     }, 4000);
+    const campaignRefreshTimer = window.setInterval(() => {
+      fetchCampaigns();
+    }, 6000);
 
     return () => {
       window.clearInterval(refreshTimer);
-      supabase.removeChannel(channel);
+      window.clearInterval(campaignRefreshTimer);
     };
   }, [fetchCalls, fetchCampaigns]);
 
@@ -227,7 +165,7 @@ export default function Dashboard() {
         const data = await response.json();
         if (cancelled) return;
 
-        const nextOverrides = (data?.presets || []).reduce((acc: Record<string, string>, preset: PresetPromptRecord) => {
+        const nextOverrides = (data?.presets || []).reduce((acc: Record<string, string>, preset: { presetId: string; prompt: string }) => {
           if (preset?.presetId && preset?.prompt) {
             acc[preset.presetId] = preset.prompt;
           }
@@ -250,14 +188,12 @@ export default function Dashboard() {
         });
       } catch (loadError) {
         if (!cancelled) {
-          console.warn('Failed to load preset prompts:', loadError);
           setPromptLoadError(loadError instanceof Error ? loadError.message : 'Failed to load saved preset prompts.');
         }
       }
     };
 
     loadPresetPrompts();
-
     return () => {
       cancelled = true;
     };
@@ -273,10 +209,7 @@ export default function Dashboard() {
       const parsed = JSON.parse(raw) as Partial<AgentRuntimeConfig> & { presetId?: string };
       const presetId = parsed.presetId || DEFAULT_AGENT_RUNTIME_CONFIG.presetId;
       const savedPrompt = savedPresetPrompts[presetId];
-      setAgentConfig(resolveAgentRuntimeConfig(presetId, {
-        ...parsed,
-        prompt: savedPrompt || parsed.prompt,
-      }));
+      setAgentConfig(resolveAgentRuntimeConfig(presetId, { ...parsed, prompt: savedPrompt || parsed.prompt }));
     } catch (storageError) {
       console.warn('Failed to load agent settings from localStorage:', storageError);
     }
@@ -291,9 +224,7 @@ export default function Dashboard() {
     if (!isMounted) return;
 
     const overridePrompt = savedPresetPrompts[agentConfig.presetId];
-    if (!overridePrompt || agentConfig.prompt === overridePrompt) {
-      return;
-    }
+    if (!overridePrompt || agentConfig.prompt === overridePrompt) return;
 
     setAgentConfig((current) => {
       const currentOverride = savedPresetPrompts[current.presetId];
@@ -308,79 +239,71 @@ export default function Dashboard() {
     });
   }, [agentConfig.presetId, agentConfig.prompt, isMounted, savedPresetPrompts]);
 
-  const activeJobs = calls.filter((call) => call.status === 'queued' || call.status === 'dispatching' || call.status === 'in_progress');
+  const activeJobs = calls.filter((call) => call.is_active === true);
   const queuedCalls = calls.filter((call) => call.status === 'queued').sort((a, b) => {
     if (a.sequence === null || a.sequence === undefined) return 1;
     if (b.sequence === null || b.sequence === undefined) return -1;
     return a.sequence - b.sequence;
   });
-  const headSequence = queuedCalls[0]?.sequence;
   const finishedCalls = calls.filter((call) => call.status === 'completed' || call.status === 'failed');
+  const primaryCampaign = campaigns.find((campaign) => campaign.stats.active > 0)
+    || campaigns.find((campaign) => campaign.stats.queued > 0)
+    || campaigns[0]
+    || null;
+  const currentCall = activeJobs[0] || null;
+  const campaignTotal = primaryCampaign?.stats.total ?? 0;
+  const campaignCompleted = primaryCampaign?.stats.completed ?? 0;
+  const campaignFailed = primaryCampaign?.stats.failed ?? 0;
+  const campaignActive = primaryCampaign?.stats.active ?? activeJobs.length;
+  const campaignCalled = Math.min(campaignTotal, campaignCompleted + campaignFailed + campaignActive);
+  const campaignLeft = Math.max(0, campaignTotal - campaignCalled);
+  const campaignSuccessRate = campaignCalled > 0 ? Math.round((campaignCompleted / campaignCalled) * 100) : 0;
+  const averageDurationSeconds = finishedCalls.length > 0
+    ? Math.round(
+      finishedCalls.reduce((total, call) => total + (call.effective_duration_seconds ?? call.duration_seconds ?? 0), 0) / finishedCalls.length,
+    )
+    : null;
+  const lastFinishedCall = finishedCalls[0] || null;
+  const latestCalls = calls.slice(0, 12);
+  const currentTranscriptMessages = selectedCall?.transcript ? (selectedCall.transcript.messages || selectedCall.transcript.chat_history || selectedCall.transcript.telemetry_messages || []) : [];
+  const filteredTranscriptMessages = currentTranscriptMessages.filter((message) => {
+    if (transcriptFilter === 'all') return true;
+    return transcriptFilter === 'caller' ? message.role === 'user' : message.role !== 'user';
+  }).map((message, index) => ({
+    id: String(index),
+    timestamp: message.created_at ? new Date(message.created_at).getTime() : Date.now(),
+    from: { isLocal: message.role === 'user' } as { isLocal: boolean },
+    message: message.content || '',
+    role: message.role || 'assistant',
+  }));
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    try {
-      const text = await file.text();
-      const numbers = text.split(/[\n,]/).map((number) => number.trim()).filter((number) => number.length > 5);
-
-      if (numbers.length === 0) {
-        alert('No valid numbers found in CSV');
-        return;
-      }
-
-      const response = await fetch('/api/campaign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `CSV ${new Date().toLocaleString()}`,
-          startsAt: null,
-          phoneNumbers: numbers,
-          agentConfig,
-          presetId: agentConfig.presetId,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        alert(`Successfully queued ${data.queuedCount} calls!`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (uploadError) {
-      console.error(uploadError);
-      alert('Failed to parse and upload CSV');
-    } finally {
-      setIsUploading(false);
-      if (event.target) event.target.value = '';
-    }
+  const formatDuration = (seconds: number | null) => {
+    if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const launchCall = async (phoneNumber: string, mode: 'now' | 'queue') => {
-    try {
-      const response = await fetch('/api/outbound', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phoneNumber: `+91${phoneNumber}`,
-          agentConfig,
-          mode,
-        }),
-      });
+  const launchCall = async (phoneNumber: string, mode: 'now' | 'queue', config: AgentRuntimeConfig): Promise<boolean> => {
+    const normalizedNumber = phoneNumber.trim().startsWith('+') ? phoneNumber.trim() : `+91${phoneNumber.trim()}`;
 
-      const data = await response.json();
+    const response = await fetch('/api/outbound', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phoneNumber: normalizedNumber,
+        agentConfig: config,
+        mode,
+      }),
+    });
 
-      if (data.success) {
-        await fetchCalls({ silent: true });
-      } else {
-        alert(`Failed to launch call: ${data.error}\n\n${data.details || ''}`);
-      }
-    } catch (launchError) {
-      console.error('Launch error:', launchError);
-      alert('Network error launching call');
+    const data = await response.json();
+    if (data.success) {
+      await fetchCalls(true);
+      return true;
     }
+    alert(`Failed to launch call: ${data.error}\n\n${data.details || ''}`);
+    return false;
   };
 
   const handleSavePrompt = async (presetId: string, prompt: string) => {
@@ -395,11 +318,7 @@ export default function Dashboard() {
       throw new Error(data?.error || 'Failed to save prompt');
     }
 
-    setSavedPresetPrompts((current) => ({
-      ...current,
-      [presetId]: data.preset.prompt,
-    }));
-
+    setSavedPresetPrompts((current) => ({ ...current, [presetId]: data.preset.prompt }));
     setAgentConfig((current) =>
       resolveAgentRuntimeConfig(current.presetId, {
         ...current,
@@ -408,555 +327,226 @@ export default function Dashboard() {
     );
   };
 
-  const formatDuration = (seconds: number | null) => {
-    if (seconds === null) return '--:--';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getTranscriptMessages = (transcript: TranscriptPayload | TranscriptMessage[] | null | undefined) => {
-    if (!transcript) return [];
-    const messages = Array.isArray(transcript)
-      ? transcript
-      : transcript.messages || transcript.chat_history || transcript.telemetry_messages || [];
-
-    return messages.map((message, index) => ({
-      id: index.toString(),
-      timestamp: message.created_at ? new Date(message.created_at).getTime() : Date.now(),
-      from: { isLocal: message.role === 'user' } as { isLocal: boolean },
-      message: message.content || '',
-    }));
-  };
-
-  const getTranscriptSummary = (transcript: TranscriptPayload | TranscriptMessage[] | null | undefined) => {
-    if (!transcript || Array.isArray(transcript)) return null;
-    return transcript.summary || null;
-  };
-
-  const getTranscriptMetrics = (transcript: TranscriptPayload | TranscriptMessage[] | null | undefined) => {
-    if (!transcript || Array.isArray(transcript)) return [];
-    const metrics = transcript.important_events || transcript.events || transcript.metrics || [];
-    const filtered = metrics.filter((item) => {
-      const name = (item.event_name || item.type || '').toLowerCase();
-      return name.includes('call') || name.includes('summary') || name.includes('dial') || name.includes('tool') || name.includes('failed') || name.includes('answer');
-    });
-    const source = filtered.length > 0 ? filtered : metrics;
-    return source.map((item, index) => ({
-      id: `${item.event_name || item.type || 'metric'}-${index}`,
-      label: item.event_name || item.type || 'metric',
-      stage: item.stage || '--',
-      latency: item.latency_ms,
-      createdAt: item.created_at,
-      payload: item.payload || item.metrics,
-    }));
-  };
-
-  const selectedTranscriptSummary = selectedCall ? getTranscriptSummary(selectedCall.transcript) : null;
-  const selectedTranscriptMessages = selectedCall ? getTranscriptMessages(selectedCall.transcript) : [];
-  const selectedTranscriptMetrics = selectedCall ? getTranscriptMetrics(selectedCall.transcript) : [];
-
   if (!isMounted) {
     return (
       <div className={styles.bootScreen}>
         <div className={styles.bootCard}>
           <span className={styles.bootPulse} />
-          <p className={styles.bootKicker}>Vobiz AI</p>
-          <h2>Loading command center</h2>
-          <p>Preparing the dashboard shell and syncing the latest call state.</p>
+          <h2>Loading</h2>
+          <p>Syncing call state...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={styles.shell}>
-      {error && (
-        <div className={styles.toast} role="alert" aria-live="polite">
-          <div>
-            <span className={styles.toastKicker}>Connection issue</span>
-            <strong>{error}</strong>
+    <DashboardShell
+      onNewCall={() => setIsModalOpen(true)}
+      error={error}
+      onErrorClose={() => setError(null)}
+    >
+      <header className={styles.topBar}>
+        <div>
+          <p className={styles.topBarKicker}>
+            System / <span style={{ color: 'var(--foreground)' }}>Dashboard</span>
+          </p>
+          <h1 className={styles.topBarTitle}>Overview</h1>
+        </div>
+
+        <div className={styles.toolbar}>
+          <div className={`${styles.agentStateBadge} ${activeJobs.length > 0 ? styles.agentStateBusy : styles.agentStateIdle}`}>
+            <span style={{
+              display: 'inline-block',
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: 'currentColor',
+              marginRight: '6px'
+            }} />
+            {activeJobs.length > 0 ? `${activeJobs.length} active` : 'Idle'}
           </div>
-          <button type="button" onClick={() => setError(null)} className={styles.toastClose}>
-            <X size={16} />
+          <button type="button" className={styles.secondaryBtn} onClick={() => fetchCalls()} disabled={isLoading}>
+            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            {isLoading ? 'Syncing' : 'Sync'}
+          </button>
+          <button type="button" className={styles.smallButton}>
+            <Search size={14} />
           </button>
         </div>
-      )}
+      </header>
 
-      <aside className={styles.sidebar}>
-        <div className={styles.brandBlock}>
-          <div className={styles.brandMark}>V</div>
-          <div>
-            <p className={styles.brandKicker}>Outbound cockpit</p>
-            <span className={styles.brandName}>Vobiz AI</span>
-          </div>
+      <section id="overview" className={styles.dashboardTop}>
+        <div className={styles.statusCard}>
+          <span>Queued</span>
+          <strong>{calls.filter(c => c.status === 'queued').length}</strong>
         </div>
-
-        <div className={styles.sidebarPanel}>
-          <div className={styles.sidebarPanelHeader}>
-            <span>Live sync</span>
-            <span className={styles.liveBadge}>
-              <span className={styles.liveDot} />
-              {isLoading ? 'Refreshing' : 'Online'}
-            </span>
-          </div>
-          <div className={styles.sidebarMetricGrid}>
-            <div className={styles.sidebarMetric}>
-              <span>Queue</span>
-              <strong>{activeJobs.length}</strong>
-            </div>
-            <div className={styles.sidebarMetric}>
-              <span>Closed</span>
-              <strong>{finishedCalls.length}</strong>
-            </div>
-            <div className={styles.sidebarMetric}>
-              <span>Saved prompts</span>
-              <strong>{Object.keys(savedPresetPrompts).length}</strong>
-            </div>
-          </div>
-          <p className={styles.sidebarNote}>
-            The dashboard keeps the selected preset and prompt locally so dispatches stay consistent across refreshes.
-          </p>
+        <div className={styles.statusCard}>
+          <span>Active</span>
+          <strong>{activeJobs.length}</strong>
         </div>
-
-        <nav className={styles.nav} aria-label="Dashboard sections">
-          <a href="#overview" className={`${styles.navItem} ${styles.active}`}>
-            <LayoutDashboard size={18} /> Overview
-          </a>
-          <a href="#live-jobs" className={styles.navItem}>
-            <Activity size={18} /> Active jobs
-          </a>
-          <a href="#call-logs" className={styles.navItem}>
-            <Clock size={18} /> Call logs
-          </a>
-          <a href="#agent-settings" className={styles.navItem}>
-            <Sparkles size={18} /> Agent settings
-          </a>
-        </nav>
-
-        <div className={styles.sidebarFooter}>
-          <span className={styles.sidebarFooterLabel}>Runtime</span>
-          <strong>{agentConfig.presetId}</strong>
-          <p>
-            {promptLoadError ? `Prompt sync warning: ${promptLoadError}` : 'Preset and prompt overrides are ready for the next launch.'}
-          </p>
+        <div className={styles.statusCard}>
+          <span>Completed</span>
+          <strong>{calls.filter(c => c.status === 'completed').length}</strong>
         </div>
-      </aside>
+        <div className={styles.statusCard}>
+          <span>Failed</span>
+          <strong>{calls.filter(c => c.status === 'failed').length}</strong>
+        </div>
+        <div className={styles.statusCard}>
+          <span>Total Calls</span>
+          <strong>{calls.length}</strong>
+        </div>
+      </section>
 
-      <main className={styles.main}>
-        <section id="overview" className={styles.hero}>
-          <div className={styles.heroCopy}>
-            <p className={styles.eyebrow}>Command center</p>
-            <h1>Call Manager</h1>
-            <p className={styles.heroText}>
-              Real-time observation, campaign launches, and agent tuning in one operations view.
-            </p>
-            <div className={styles.heroChips}>
-              <span className={styles.heroChip}>Supabase live feed</span>
-              <span className={styles.heroChip}>Preset-aware dispatch</span>
-              <span className={styles.heroChip}>Web test ready</span>
+      <section className={`${styles.agentAccordion} ${isAccordionOpen ? styles.accordionOpen : ''}`}>
+        <div className={styles.accordionHeader} onClick={() => setIsAccordionOpen(!isAccordionOpen)}>
+          <div className={styles.accordionInfo}>
+            <div className={styles.agentNameTag}>
+              <h3>{agentConfig.presetId.charAt(0).toUpperCase() + agentConfig.presetId.slice(1).replace(/-/g, ' ')}</h3>
+              <span className={styles.agentStatusBadge}>Active Preset</span>
+            </div>
+            <div className={styles.summary} style={{ margin: 0, border: 'none', background: 'transparent' }}>
+              <div>
+                <span className={styles.summaryLabel}>Arch</span>
+                <strong>{agentConfig.presetId}</strong>
+              </div>
+              <div>
+                <span className={styles.summaryLabel}>Inf</span>
+                <strong>{agentConfig.llmModel}</strong>
+              </div>
+              <div>
+                <span className={styles.summaryLabel}>Syn</span>
+                <strong>{agentConfig.ttsModel}</strong>
+              </div>
             </div>
           </div>
 
-          <div className={styles.heroActions}>
+          <div className={styles.accordionActions}>
             <button
               type="button"
-              className={styles.secondaryBtn}
-              onClick={() => document.getElementById('csvUpload')?.click()}
-              disabled={isUploading}
+              className={styles.smallButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsTestAgentOpen(true);
+              }}
+              style={{ background: 'var(--accent)', color: 'white', borderColor: 'var(--accent-strong)' }}
             >
-              <Upload size={18} />
-              {isUploading ? 'Uploading...' : 'Upload CSV'}
+              <MonitorPlay size={14} />
+              Web Test
             </button>
-            <button type="button" className={styles.primaryBtn} onClick={() => setIsModalOpen(true)}>
-              <Plus size={18} />
-              Launch New Call
-            </button>
-            <button type="button" className={styles.ghostBtn} onClick={() => setIsTestAgentOpen(true)}>
-              <PhoneCall size={18} />
-              Talk to Agent
-            </button>
-            <input
-              type="file"
-              id="csvUpload"
-              accept=".csv,.txt"
-              className={styles.hiddenInput}
-              onChange={handleFileUpload}
-            />
+            <ChevronDown size={18} className={styles.accordionToggleIcon} />
           </div>
-        </section>
+        </div>
 
-        <section className={styles.agentTldr}>
+        <div className={styles.accordionBody}>
+          <AgentSettingsPanel
+            value={agentConfig}
+            onChange={setAgentConfig}
+            onSavePrompt={handleSavePrompt}
+            promptOverrides={savedPresetPrompts}
+          />
+        </div>
+      </section>
+
+      <section id="activity" className={styles.section}>
+        <div className={styles.sectionHeader}>
           <div>
-            <p className={styles.sectionKicker}>Current agent</p>
-            <h2>{agentConfig.presetId}</h2>
-            <p className={styles.sectionMeta}>LLM {agentConfig.llmModel} · TTS {agentConfig.ttsModel} ({agentConfig.ttsVoice}) · STT {agentConfig.sttModel}</p>
-            <p className={styles.promptSnippet}>{(agentConfig.prompt || '').slice(0, 160)}{agentConfig.prompt.length > 160 ? '…' : ''}</p>
+            <p className={styles.sectionKicker}>Recent Activity</p>
+            <h2>Call Logs</h2>
           </div>
-          <div className={styles.agentTldrActions}>
-            <button type="button" className={styles.primaryBtn} onClick={() => setIsModalOpen(true)}>
-              <Plus size={18} />
-              Launch single call
-            </button>
-            <button type="button" className={styles.ghostBtn} onClick={() => setIsTestAgentOpen(true)}>
-              <PhoneCall size={18} />
-              Test agent
-            </button>
+        </div>
+
+        {calls.length === 0 ? (
+          <div className={styles.emptyState}>
+            <HistoryIcon size={32} style={{ opacity: 0.2, marginBottom: '0.5rem' }} />
+            <p>No call logs yet.</p>
           </div>
-        </section>
-
-        <section id="agent-settings" className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <div>
-              <p className={styles.sectionKicker}>Voice stack</p>
-              <h2>Preset-driven agent settings</h2>
-            </div>
-            <p className={styles.sectionMeta}>
-              Keep the worker, prompt, and dispatch metadata in sync before launching a campaign.
-            </p>
-          </div>
-          <div className={styles.panelCard}>
-            <AgentSettingsPanel
-              value={agentConfig}
-              onChange={setAgentConfig}
-              onSavePrompt={handleSavePrompt}
-              promptOverrides={savedPresetPrompts}
-            />
-            {promptLoadError && <div className={styles.inlineWarning}>Prompt sync warning: {promptLoadError}</div>}
-          </div>
-        </section>
-
-        <section className={styles.metricGrid}>
-          <article className={styles.metricCard}>
-            <span className={styles.metricLabel}>Total opportunities</span>
-            <strong className={styles.metricValue}>{calls.length}</strong>
-            <span className={styles.metricMeta}>All call records synced from Supabase</span>
-          </article>
-          <article className={styles.metricCard}>
-            <span className={styles.metricLabel}>Successful connections</span>
-            <strong className={styles.metricValue}>{finishedCalls.filter((call) => call.status === 'completed').length}</strong>
-            <span className={styles.metricMeta}>Completed outcomes in the call history</span>
-          </article>
-          <article className={styles.metricCard}>
-            <span className={styles.metricLabel}>Active queued</span>
-            <strong className={styles.metricValue}>{activeJobs.length}</strong>
-            <span className={styles.metricMeta}>Queued, dispatching, or in-progress jobs</span>
-          </article>
-        </section>
-
-        <section className={styles.workspaceGrid}>
-          <article className={styles.panelCard}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.sectionKicker}>Runner health</p>
-                <h2>Live ops status</h2>
-              </div>
-              <span className={styles.sectionMeta}>Head seq {headSequence ?? '—'} | Queue {queuedCalls.length}</span>
-            </div>
-            <div className={styles.healthGrid}>
-              <div className={styles.cardStat}>
-                <span className={styles.sectionKicker}>Queue</span>
-                <strong>{queuedCalls.length}</strong>
-              </div>
-              <div className={styles.cardStat}>
-                <span className={styles.sectionKicker}>Active</span>
-                <strong>{activeJobs.length}</strong>
-              </div>
-              <div className={styles.cardStat}>
-                <span className={styles.sectionKicker}>Completed</span>
-                <strong>{finishedCalls.filter((call) => call.status === 'completed').length}</strong>
-              </div>
-            </div>
-          </article>
-          <article className={styles.panelCard} style={{ gridColumn: '1 / -1' }}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.sectionKicker}>Campaigns</p>
-                <h2>Running & scheduled</h2>
-              </div>
-              <div className={styles.toolbar}>
-                <Link href="/campaigns" className={styles.toolbarBtn}>Open campaigns</Link>
-                <button type="button" className={styles.toolbarBtn} onClick={fetchCampaigns} disabled={campaignsLoading}>
-                  {campaignsLoading ? 'Refreshing...' : 'Refresh'}
-                </button>
-              </div>
-            </div>
-
-            {campaignsError && <div className={styles.inlineWarning}>{campaignsError}</div>}
-
-            {campaignsLoading && campaigns.length === 0 ? (
-              <div className={styles.tableState}>Loading campaigns…</div>
-            ) : campaigns.length === 0 ? (
-              <div className={styles.tableState}>
-                <p>No campaigns yet.</p>
-                <span>Create one via CSV upload or the campaigns page.</span>
-              </div>
-            ) : (
-              <div className={styles.campaignPreviewGrid}>
-                {campaigns.map((c) => (
-                  <Link key={c.id} href={`/campaigns/${c.id}`} className={styles.campaignCard}>
-                    <div className={styles.campaignTop}>
-                      <div>
-                        <p className={styles.sectionKicker}>{c.status}</p>
-                        <h3>{c.name}</h3>
-                        <p className={styles.sectionMeta}>
-                          {c.starts_at ? `Starts ${new Date(c.starts_at).toLocaleString()}` : 'Starts immediately'}
-                        </p>
-                        <p className={styles.sectionMeta}>Preset {c.preset_id}</p>
-                        {c.agent_prompt && (
-                          <p className={styles.promptSnippet}>
-                            {(c.agent_prompt || '').slice(0, 120)}{(c.agent_prompt || '').length > 120 ? '…' : ''}
-                          </p>
-                        )}
-                      </div>
-                      <div className={styles.sequenceBadge}>Preset {c.preset_id}</div>
-                    </div>
-                    <div className={styles.campaignStats}>
-                      <div>
-                        <span className={styles.sectionKicker}>Queued</span>
-                        <strong>{c.stats.queued}</strong>
-                      </div>
-                      <div>
-                        <span className={styles.sectionKicker}>Active</span>
-                        <strong>{c.stats.active}</strong>
-                      </div>
-                      <div>
-                        <span className={styles.sectionKicker}>Completed</span>
-                        <strong>{c.stats.completed}</strong>
-                      </div>
-                      <div>
-                        <span className={styles.sectionKicker}>Total</span>
-                        <strong>{c.stats.total}</strong>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </article>
-          <article id="live-jobs" className={styles.panelCard}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.sectionKicker}>Live monitor</p>
-                <h2>Active agent jobs</h2>
-              </div>
-              <span className={styles.sectionMeta}>{activeJobs.length} live</span>
-            </div>
-
-            {queuedCalls.length > 0 && (
-              <div className={styles.nextUpBar}>
-                <div>
-                  <p className={styles.sectionKicker}>Next up</p>
-                  <strong>{queuedCalls[0].phone_number}</strong>
-                  {queuedCalls[0].starts_at && (
-                    <span className={styles.sectionMeta}>
-                      starts at {new Date(queuedCalls[0].starts_at).toLocaleTimeString()}
-                    </span>
-                  )}
-                </div>
-                <div className={styles.sequenceBadge}>
-                  Seq {queuedCalls[0].sequence ?? '—'}
-                </div>
-              </div>
-            )}
-
-            <div className={styles.liveGrid}>
-              {activeJobs.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <PhoneCall size={36} />
-                  <p>No active agent jobs yet.</p>
-                  <span>If you just launched a call, give it a few seconds to appear in the stream.</span>
-                </div>
-              ) : (
-                activeJobs.map((call) => {
-                  const badgeClass =
-                    call.status === 'in_progress'
-                      ? styles.connected
-                      : call.status === 'dispatching'
-                        ? styles.transcribing
-                        : styles.ringing;
-
+        ) : (
+          <div className={styles.tableContainer}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Destination</th>
+                  <th>Duration</th>
+                  <th>Campaign / Type</th>
+                  <th>Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latestCalls.map((call) => {
+                  const campaign = campaigns.find(c => c.id === (call as any).campaign_id);
                   return (
-                    <div key={call.id} className={styles.callCard}>
-                      <div className={styles.callCardHeader}>
-                        <span className={styles.phoneNumber}>{call.phone_number}</span>
-                        <span className={`${styles.statusBadge} ${badgeClass}`}>{call.status.toUpperCase()}</span>
-                      </div>
-                      <div className={styles.callDetails}>
-                        <div>
-                          <span>Started</span>
-                          <strong>{new Date(call.created_at).toLocaleTimeString()}</strong>
-                        </div>
-                        <div>
-                          <span>ID</span>
-                          <strong>{call.id.slice(0, 8)}...</strong>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </article>
-
-          <article id="call-logs" className={styles.panelCard}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.sectionKicker}>History</p>
-                <h2>Recent call logs</h2>
-              </div>
-              <div className={styles.toolbar}>
-                <button type="button" className={styles.toolbarBtn} onClick={() => console.log('Raw Supabase Data:', calls)}>
-                  Log to console
-                </button>
-                <button type="button" className={styles.toolbarDangerBtn} onClick={clearLogs} disabled={isLoading}>
-                  Clear logs
-                </button>
-                <button type="button" className={styles.toolbarBtn} onClick={() => fetchCalls()} disabled={isLoading}>
-                  <RefreshCw size={14} />
-                  {isLoading ? 'Refreshing...' : 'Refresh'}
-                </button>
-              </div>
-            </div>
-
-            <div className={styles.tableCard}>
-              {isLoading && calls.length === 0 ? (
-                <div className={styles.tableState}>
-                  <div className={styles.loadingPill}>Loading data...</div>
-                  <p>Connecting to Supabase and pulling the latest records.</p>
-                </div>
-              ) : calls.length === 0 ? (
-                <div className={styles.tableState}>
-                  <p>No records found in the calls table.</p>
-                  <span>Launch a call to create the first record.</span>
-                </div>
-              ) : finishedCalls.length === 0 ? (
-                <div className={styles.tableState}>
-                  <p>{calls.length} entries found, but none are completed yet.</p>
-                  <span>Check the active jobs section for in-flight calls.</span>
-                </div>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Recipient</th>
-                      <th>Status</th>
-                      <th>Duration</th>
-                      <th>Time</th>
-                      <th></th>
+                    <tr key={call.id} onClick={() => setSelectedCall(call)} className={styles.tableRow}>
+                      <td>{new Date(call.created_at).toLocaleString()}</td>
+                      <td>{call.phone_number}</td>
+                      <td>{formatDuration(call.effective_duration_seconds ?? call.duration_seconds)}</td>
+                      <td>
+                        {campaign ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Layers size={14} />
+                            {campaign.name}
+                          </span>
+                        ) : (
+                          <span style={{ opacity: 0.6 }}>Single Call</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${styles[call.status] || styles.ringing}`}>
+                          {call.status}
+                        </span>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {finishedCalls.map((call) => {
-                      const badgeClass = call.status === 'completed' ? styles.completed : styles.failed;
-
-                      return (
-                        <tr key={call.id} onClick={() => setSelectedCall(call)} className={styles.tableRow}>
-                          <td className={styles.tdPhone}>{call.phone_number}</td>
-                          <td>
-                            <span className={`${styles.statusBadge} ${badgeClass}`}>{call.status.toUpperCase()}</span>
-                          </td>
-                          <td className={styles.tdDuration}>{formatDuration(call.duration_seconds)}</td>
-                          <td className={styles.tdTime}>
-                            {new Date(call.created_at).toLocaleDateString()} {new Date(call.created_at).toLocaleTimeString()}
-                          </td>
-                          <td className={styles.tdAction}>
-                            <ChevronRight size={16} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </article>
-        </section>
-
-        {selectedCall && (
-          <div className={styles.drawerOverlay} onClick={() => setSelectedCall(null)}>
-            <div className={styles.drawer} onClick={(event) => event.stopPropagation()}>
-              <div className={styles.drawerHeader}>
-                <div>
-                  <p className={styles.drawerKicker}>Call log</p>
-                  <h2>Full record and transcript</h2>
-                  <p className={styles.drawerDescription}>
-                    Review the call summary, transcript, and important events from the selected record.
-                  </p>
-                </div>
-                <button type="button" onClick={() => setSelectedCall(null)} className={styles.drawerClose}>
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className={styles.transcriptContainer}>
-                <div className={styles.drawerMetaGrid}>
-                  <div className={styles.drawerMetaCard}>
-                    <span className={styles.drawerMetaLabel}>Recipient</span>
-                    <strong>{selectedCall.phone_number}</strong>
-                  </div>
-                  <div className={styles.drawerMetaCard}>
-                    <span className={styles.drawerMetaLabel}>Status</span>
-                    <strong>{selectedCall.status.toUpperCase()}</strong>
-                  </div>
-                  <div className={styles.drawerMetaCard}>
-                    <span className={styles.drawerMetaLabel}>Duration</span>
-                    <strong>{formatDuration(selectedCall.duration_seconds)}</strong>
-                  </div>
-                  <div className={styles.drawerMetaCard}>
-                    <span className={styles.drawerMetaLabel}>Started</span>
-                    <strong>{new Date(selectedCall.created_at).toLocaleString()}</strong>
-                  </div>
-                </div>
-
-                {selectedTranscriptSummary && (
-                  <section className={styles.drawerCard}>
-                    <div className={styles.drawerCardHeader}>
-                      <div>
-                        <span className={styles.drawerCardKicker}>Summary</span>
-                        <h3>Auto-generated call summary</h3>
-                      </div>
-                      <span className={styles.drawerCardCount}>From transcript</span>
-                    </div>
-                    <p className={styles.drawerSummaryText}>{selectedTranscriptSummary}</p>
-                  </section>
-                )}
-
-                {selectedTranscriptMessages.length > 0 ? (
-                  <AgentChatTranscript messages={selectedTranscriptMessages} style={{ height: '100%' }} />
-                ) : (
-                  <div className={styles.drawerEmpty}>No transcript available for this call.</div>
-                )}
-
-                {selectedTranscriptMetrics.length > 0 && (
-                  <div className={styles.metricsSection}>
-                    <div className={styles.metricsSectionHeader}>Important call events</div>
-                    <div className={styles.metricsList}>
-                      {selectedTranscriptMetrics.map((metric) => (
-                        <div key={metric.id} className={styles.metricItem}>
-                          <div className={styles.metricItemTop}>
-                            <span>{metric.label}</span>
-                            <span>{metric.latency !== null && metric.latency !== undefined ? `${metric.latency.toFixed(2)} ms` : '--'}</span>
-                          </div>
-                          <div className={styles.metricItemBottom}>
-                            Stage: {metric.stage} {metric.createdAt ? `• ${new Date(metric.createdAt).toLocaleTimeString()}` : ''}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-      </main>
+      </section>
+
+      {selectedCall && (
+        <div className={styles.drawerOverlay} onClick={() => setSelectedCall(null)}>
+          <div className={styles.drawer} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.drawerHeader}>
+              <div>
+                <p className={styles.drawerKicker}>Transcript</p>
+                <h2>{selectedCall.phone_number}</h2>
+              </div>
+              <button onClick={() => setSelectedCall(null)} className={styles.smallButton}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className={styles.transcriptContainer}>
+              <div className={styles.callStatGrid}>
+                <div className={styles.callStat}>
+                  <span>Number</span>
+                  <strong>{selectedCall.phone_number}</strong>
+                </div>
+                <div className={styles.callStat}>
+                  <span>Status</span>
+                  <strong>{selectedCall.status}</strong>
+                </div>
+              </div>
+              {selectedCall.transcript?.summary && (
+                <div className={styles.promptSnippet}>
+                  <strong>Summary:</strong>
+                  <p>{selectedCall.transcript.summary}</p>
+                </div>
+              )}
+              <AgentChatTranscript messages={filteredTranscriptMessages} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <NewCallModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onLaunch={launchCall}
         queuedCount={queuedCalls.length}
+        availablePresetIds={AGENT_PRESETS.map(p => p.id)}
+        defaultAgentConfig={agentConfig}
       />
 
       <VoiceAgentDialog
@@ -964,6 +554,6 @@ export default function Dashboard() {
         onClose={() => setIsTestAgentOpen(false)}
         agentConfig={agentConfig}
       />
-    </div>
+    </DashboardShell>
   );
 }

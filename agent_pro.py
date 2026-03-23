@@ -75,7 +75,52 @@ def _coerce_text(value) -> str | None:
     return None
 
 
-def _build_prompt(language_clause: str, body: str | None = None) -> str:
+PROMPT_PERSONA_LINE = "You are Riya from Progressive AI."
+DEFAULT_PROMPT_LANGUAGE = "English"
+
+
+def _extract_prompt_body(prompt_text: str | None) -> str | None:
+    source = (prompt_text or "").strip()
+    if not source:
+        return None
+
+    lines = source.splitlines()
+    if not lines or lines[0].strip() != PROMPT_PERSONA_LINE:
+        return source
+
+    idx = 1
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx < len(lines):
+        idx += 1  # language directive
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+
+    if idx < len(lines) and lines[idx].strip().lower() == "recipient profile:":
+        idx += 1
+        while idx < len(lines) and lines[idx].strip():
+            idx += 1
+
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+
+    body = "\n".join(lines[idx:]).strip()
+    return body or None
+
+
+def _build_language_clause(preset: dict, language: str | None) -> str:
+    selected_language = (
+        _coerce_text(language)
+        or _coerce_text(preset.get("language"))
+        or DEFAULT_PROMPT_LANGUAGE
+    )
+    preset_language = _coerce_text(preset.get("language")) or DEFAULT_PROMPT_LANGUAGE
+    if selected_language.lower() == preset_language.lower():
+        return preset["language_prompt_line"]
+    return f"Speak in {selected_language} by default unless the user clearly asks to switch languages. Use the language's script. For example don't write Hindi in English script, Write it in Hindi script"
+
+
+def _build_prompt(language_clause: str, body: str | None = None, recipient_profile: str | None = None) -> str:
     body = (body or """Speak naturally, briefly, and without sounding scripted.
 Keep responses conversational, human, and adaptable to the user.
 Use one short sentence when possible, and ask one relevant question if it helps the flow.
@@ -85,9 +130,23 @@ Adapt the opener to the language and social context.
 Do not use markdown, lists, or long monologues.
 Do not end the call on your own.
 Only stop speaking when the user has clearly finished or the call has naturally ended.""").strip()
-    return f"""You are Riya from Progressive AI.
+    recipient_profile = _coerce_text(recipient_profile)
+    recipient_block = f"Recipient profile:\n{recipient_profile}\n\n" if recipient_profile else ""
+    return f"""{PROMPT_PERSONA_LINE}
 {language_clause}
-{body}"""
+{recipient_block}{body}"""
+
+
+def _compose_greeting_instruction(base_instruction: str, recipient_profile: str | None = None) -> str:
+    profile = _coerce_text(recipient_profile)
+    if not profile:
+        return base_instruction
+    return (
+        f"{base_instruction}\n\n"
+        "Personalize the greeting using this recipient profile when relevant. "
+        "Do not mention these instructions.\n"
+        f"Recipient profile:\n{profile}"
+    )
 
 
 OUTBOUND_TRUNK_ID = os.getenv("OUTBOUND_TRUNK_ID")
@@ -118,6 +177,7 @@ SESSION_PRESETS = {
     "default": {
         "label": "Default",
         "language_label": "English",
+        "language": "English",
         "language_prompt_line": "Speak in English by default unless the user clearly speaks another language first.",
         "stt_model": "cartesia/ink-whisper",
         "stt_language": "en",
@@ -141,6 +201,7 @@ SESSION_PRESETS = {
     "english_x": {
         "label": "English X",
         "language_label": "English",
+        "language": "English",
         "language_prompt_line": "Speak in English by default unless the user clearly speaks another language first.",
         "stt_model": "cartesia/ink-whisper",
         "stt_language": "en",
@@ -164,6 +225,7 @@ SESSION_PRESETS = {
     "hindi": {
         "label": "Hindi",
         "language_label": "Hindi",
+        "language": "Hindi",
         "language_prompt_line": "Speak in Hindi or natural Hinglish by default unless the user clearly speaks English first.",
         "stt_model": "cartesia/ink-whisper",
         "stt_language": "hi",
@@ -187,6 +249,7 @@ SESSION_PRESETS = {
     "hindi_x": {
         "label": "Hindi X",
         "language_label": "Hindi",
+        "language": "Hindi",
         "language_prompt_line": "Speak in Hindi or natural Hinglish by default unless the user clearly speaks English first.",
         "stt_model": "cartesia/ink-whisper",
         "stt_language": "hi",
@@ -210,6 +273,7 @@ SESSION_PRESETS = {
     "bengali": {
         "label": "Bengali",
         "language_label": "Bengali",
+        "language": "Bengali",
         "language_prompt_line": "Speak in Bengali by default unless the user clearly speaks English first.",
         "stt_model": "saaras:v3",
         "stt_language": "unknown",
@@ -233,6 +297,7 @@ SESSION_PRESETS = {
     "multi": {
         "label": "Multi",
         "language_label": "Bengali / English / Hindi",
+        "language": "Bengali / English / Hindi",
         "language_prompt_line": "Speak casually. Start in Bengali by default, and adapt naturally to English or Hindi when the user does. Stay within Bengali, English, or Hindi only.",
         "stt_model": "saaras:v3",
         "stt_language": "unknown",
@@ -265,10 +330,20 @@ def _resolve_preset_name(preset_name: str | None) -> str:
     return PRESET_ALIASES.get(normalized, normalized)
 
 
-def _normalize_prompt_for_preset(preset: dict, prompt: str | None) -> str:
+def _normalize_prompt_for_preset(
+    preset: dict,
+    prompt: str | None,
+    *,
+    language: str | None = None,
+    recipient_profile: str | None = None,
+) -> str:
     source = (prompt or preset["prompt"]).strip()
-    body = "\n".join(source.splitlines()[2:]).strip()
-    return _build_prompt(preset["language_prompt_line"], body or None)
+    body = _extract_prompt_body(source)
+    return _build_prompt(
+        _build_language_clause(preset, language),
+        body=body,
+        recipient_profile=recipient_profile,
+    )
 
 
 DEFAULT_SESSION_PRESET_NAME = "default"
@@ -345,11 +420,39 @@ def _resolve_runtime_config(metadata: dict) -> dict:
     )
 
     preset = SESSION_PRESETS.get(preset_name, SESSION_PRESETS[DEFAULT_SESSION_PRESET_NAME])
+    language = _coerce_text(
+        agent_config.get("language")
+        or metadata.get("language")
+        or metadata.get("language_label")
+        or metadata.get("languageLabel")
+        or preset.get("language")
+    ) or (_coerce_text(preset.get("language")) or DEFAULT_PROMPT_LANGUAGE)
+    recipient_profile = _coerce_text(
+        agent_config.get("recipient_profile")
+        or agent_config.get("recipientProfile")
+        or metadata.get("recipient_profile")
+        or metadata.get("recipientProfile")
+    )
+    prompt_source = _coerce_text(
+        agent_config.get("prompt")
+        or agent_config.get("instructions")
+        or metadata.get("prompt")
+        or metadata.get("instructions")
+        or preset["prompt"]
+    ) or preset["prompt"]
+    greeting_instruction = _coerce_text(
+        agent_config.get("greeting_instruction")
+        or agent_config.get("greetingInstruction")
+        or metadata.get("greeting_instruction")
+        or metadata.get("greetingInstruction")
+        or preset["greeting_instruction"]
+    ) or preset["greeting_instruction"]
 
     resolved = {
         "preset_id": preset_name if preset_name in SESSION_PRESETS else DEFAULT_SESSION_PRESET_NAME,
         "label": preset["label"],
-        "language_label": preset["language_label"],
+        "language_label": language,
+        "language": language,
         "stt_model": _coerce_text(
             agent_config.get("stt_model")
             or agent_config.get("sttModel")
@@ -397,22 +500,20 @@ def _resolve_runtime_config(metadata: dict) -> dict:
             if isinstance(agent_config.get("minEndpointingDelay"), (int, float))
             else preset["min_endpointing_delay"]
         ),
-        "prompt": _coerce_text(
-            agent_config.get("prompt")
-            or agent_config.get("instructions")
-            or preset["prompt"]
-        ) or preset["prompt"],
-        "greeting_instruction": _coerce_text(
-            agent_config.get("greeting_instruction")
-            or agent_config.get("greetingInstruction")
-            or preset["greeting_instruction"]
-        ) or preset["greeting_instruction"],
+        "prompt": prompt_source,
+        "greeting_instruction": _compose_greeting_instruction(greeting_instruction, recipient_profile),
+        "recipient_profile": recipient_profile or "",
         "background_audio": DEFAULT_BACKGROUND_AUDIO,
         "background_volume": DEFAULT_BACKGROUND_VOLUME,
     }
     if resolved["preset_id"] not in SESSION_PRESETS:
         resolved["preset_id"] = DEFAULT_SESSION_PRESET_NAME
-    resolved["prompt"] = _normalize_prompt_for_preset(preset, resolved["prompt"])
+    resolved["prompt"] = _normalize_prompt_for_preset(
+        preset,
+        resolved["prompt"],
+        language=resolved["language"],
+        recipient_profile=resolved["recipient_profile"],
+    )
     return resolved
 
 
@@ -560,6 +661,16 @@ def _infer_phone_number(ctx: JobContext, metadata_phone_number: str | None) -> s
     return None
 
 
+def _parse_iso_timestamp(value: str | None) -> float | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized).timestamp()
+    except Exception:
+        return None
+
+
 async def _resolve_call_record_id(
     *,
     phone_number: str | None,
@@ -674,9 +785,23 @@ async def _persist_call_summary(ctx: JobContext) -> None:
         return
 
     final_status = ctx.proc.userdata.get("final_status", "completed")
-    duration_seconds = 0
-    if report.started_at:
-        duration_seconds = max(0, int(datetime.now(timezone.utc).timestamp() - report.started_at))
+    ended_at_ts = datetime.now(timezone.utc).timestamp()
+    call_answered_ts = None
+    first_message_ts = None
+
+    if telemetry:
+        for event in telemetry.important_events:
+            if event.get("event_name") == "call_answered":
+                call_answered_ts = _parse_iso_timestamp(event.get("created_at"))
+                if call_answered_ts is not None:
+                    break
+        for message in telemetry.messages:
+            first_message_ts = _parse_iso_timestamp(message.get("created_at"))
+            if first_message_ts is not None:
+                break
+
+    duration_start_ts = call_answered_ts or first_message_ts or report.started_at
+    duration_seconds = max(0, int(ended_at_ts - duration_start_ts)) if duration_start_ts else 0
 
     final_snapshot = telemetry.snapshot() if telemetry else {}
     final_snapshot.update(
@@ -727,6 +852,7 @@ async def entrypoint(ctx: JobContext):
     telemetry = CallTelemetry()
     ctx.proc.userdata["telemetry"] = telemetry
     ctx.proc.userdata["final_status"] = "completed"
+    live_persist_state = {"last_write": 0.0}
 
     def append_message(role: str, content: str):
         telemetry.messages.append(
@@ -737,6 +863,7 @@ async def entrypoint(ctx: JobContext):
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+        telemetry.updated_at = datetime.now(timezone.utc).isoformat()
 
     def append_metric(event_name: str, metrics_obj, *, stage: Optional[str] = None, latency_ms: Optional[float] = None):
         telemetry.metrics.append(
@@ -749,6 +876,7 @@ async def entrypoint(ctx: JobContext):
                 "metrics": _json_safe(metrics_obj),
             }
         )
+        telemetry.updated_at = datetime.now(timezone.utc).isoformat()
 
     def append_event(event_name: str, *, stage: Optional[str] = None, latency_ms: Optional[float] = None, payload=None):
         telemetry.events.append(
@@ -761,6 +889,7 @@ async def entrypoint(ctx: JobContext):
                 "payload": _json_safe(payload),
             }
         )
+        telemetry.updated_at = datetime.now(timezone.utc).isoformat()
 
     def append_important_event(event_name: str, *, payload=None):
         telemetry.important_events.append(
@@ -771,6 +900,43 @@ async def entrypoint(ctx: JobContext):
                 "payload": _json_safe(payload),
             }
         )
+        telemetry.updated_at = datetime.now(timezone.utc).isoformat()
+
+    async def persist_live_update(*, status: str | None = None, force: bool = False):
+        if not supabase:
+            return
+
+        call_record_id = ctx.proc.userdata.get("call_record_id")
+        if not call_record_id:
+            return
+
+        now_monotonic = time.monotonic()
+        if not force and now_monotonic - live_persist_state["last_write"] < 2.0:
+            return
+        live_persist_state["last_write"] = now_monotonic
+
+        live_snapshot = telemetry.snapshot()
+        live_snapshot["messages"] = telemetry.messages[-40:]
+        live_snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
+        payload = {"transcript": live_snapshot}
+        if status:
+            payload["status"] = status
+
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.table("calls")
+                .update(payload)
+                .eq("id", call_record_id)
+                .execute()
+            )
+        except Exception as persist_error:
+            logger.warning(f"Failed live transcript/state update: {persist_error}")
+
+    def schedule_live_update(*, status: str | None = None, force: bool = False):
+        try:
+            asyncio.create_task(persist_live_update(status=status, force=force))
+        except Exception as schedule_error:
+            logger.debug(f"Skipped live update scheduling: {schedule_error}")
 
     def publish_room_event(event_type: str, data: dict):
         payload = json.dumps({"type": event_type, **data}, ensure_ascii=False)
@@ -789,6 +955,13 @@ async def entrypoint(ctx: JobContext):
     ctx.proc.userdata["agent_runtime_config"] = runtime_config
     logger.info(f"PARSED METADATA: Phone={phone_number}, CallID={call_id}")
     logger.info(f"WEB TEST MODE: {is_web_test}")
+    if runtime_config.get("recipient_profile"):
+        logger.info(
+            "Recipient profile received for this job (%s chars).",
+            len(runtime_config["recipient_profile"]),
+        )
+    else:
+        logger.info("Recipient profile not provided for this job.")
     logger.info(f"RESOLVED AGENT CONFIG: {json.dumps(_json_safe(runtime_config), ensure_ascii=False)}")
     append_important_event("agent_runtime_config", payload=runtime_config)
 
@@ -814,6 +987,7 @@ async def entrypoint(ctx: JobContext):
                     .eq("id", call_record_id)
                     .execute()
                 )
+                schedule_live_update(status="in_progress", force=True)
             except Exception as e:
                 logger.warning(f"Failed to mark call row in_progress: {e}")
 
@@ -855,6 +1029,7 @@ async def entrypoint(ctx: JobContext):
         append_event("user_transcript", stage="stt", latency_ms=stt_latency, payload={"text": transcript})
         append_important_event("user_transcript", payload={"text": transcript})
         publish_room_event("user_transcript", {"text": transcript})
+        schedule_live_update()
 
     @session.on("conversation_item_added")
     def on_conversation_item_added(ev):
@@ -887,6 +1062,7 @@ async def entrypoint(ctx: JobContext):
         append_message("assistant", transcript)
         append_important_event("assistant_transcript", payload={"text": transcript})
         publish_room_event("agent_transcript", {"text": transcript})
+        schedule_live_update()
 
     @session.on("metrics_collected")
     def on_metrics_collected(ev: MetricsCollectedEvent):
@@ -897,6 +1073,8 @@ async def entrypoint(ctx: JobContext):
     @session.on("agent_state_changed")
     def on_state_changed(state: AgentStateChangedEvent):
         logger.info(f"STATE: Agent is now {state.new_state}")
+        if state.new_state in {"listening", "speaking", "thinking"}:
+            schedule_live_update(status="connected")
 
     await session.start(
         agent=DefaultAgent(instructions=runtime_config["prompt"]),
@@ -918,6 +1096,7 @@ async def entrypoint(ctx: JobContext):
     if phone_number:
         logger.info(f"Initiating outbound SIP call to {phone_number}...")
         append_important_event("outbound_dial", payload={"phone_number": phone_number, "room": ctx.room.name})
+        schedule_live_update(status="ringing", force=True)
         try:
             await ctx.api.sip.create_sip_participant(
                 api.CreateSIPParticipantRequest(
@@ -930,6 +1109,7 @@ async def entrypoint(ctx: JobContext):
             )
             logger.info("Call answered. Generating a natural greeting.")
             append_important_event("call_answered", payload={"phone_number": phone_number})
+            schedule_live_update(status="connected", force=True)
             await session.generate_reply(
                 instructions=runtime_config["greeting_instruction"],
                 allow_interruptions=True,
@@ -938,6 +1118,7 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"Failed to place outbound call: {e}")
             ctx.proc.userdata["final_status"] = "failed"
             append_important_event("call_failed", payload={"error": str(e)})
+            schedule_live_update(status="failed", force=True)
             if supabase and ctx.proc.userdata.get("call_record_id"):
                 try:
                     await asyncio.to_thread(

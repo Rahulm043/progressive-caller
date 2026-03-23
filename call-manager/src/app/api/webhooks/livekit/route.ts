@@ -30,18 +30,65 @@ export async function POST(req: Request) {
         }
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // Fallback or Status Synchronization
+        const reconcileCampaignStatus = async (campaignId: string) => {
+            const { data: callRows, error: callsErr } = await supabase
+                .from('calls')
+                .select('status')
+                .eq('campaign_id', campaignId);
+
+            if (callsErr) {
+                console.error('Webhook campaign reconcile calls error:', callsErr);
+                return;
+            }
+
+            const statuses = (callRows || []).map((row) => String(row.status || '').toLowerCase());
+            const queued = statuses.filter((s) => s === 'queued').length;
+            const active = statuses.filter((s) => ['dispatching', 'ringing', 'connected', 'in_progress'].includes(s)).length;
+            const completed = statuses.filter((s) => s === 'completed').length;
+            const total = statuses.length;
+
+            let nextStatus = 'running';
+            if (total > 0 && queued === 0 && active === 0) {
+                nextStatus = completed > 0 ? 'completed' : 'failed';
+            }
+
+            const { error: campaignErr } = await supabase
+                .from('campaigns')
+                .update({ status: nextStatus })
+                .eq('id', campaignId);
+
+            if (campaignErr) {
+                console.error('Webhook campaign reconcile update error:', campaignErr);
+            }
+        };
+
+        // Fallback or status synchronization
         if (event.event === 'room_finished') {
             const roomName = event.room?.name;
             if (roomName) {
-                // Mark completed only if the agent has not already finalized the row.
+                const { data: roomCallRows, error: roomLookupError } = await supabase
+                    .from('calls')
+                    .select('id,campaign_id,status')
+                    .eq('livekit_room_name', roomName)
+                    .limit(1);
+
+                if (roomLookupError) {
+                    console.error('Webhook DB lookup error:', roomLookupError);
+                }
+
+                // Mark completed only for active call states.
                 const { error } = await supabase
                     .from('calls')
                     .update({ status: 'completed' })
                     .eq('livekit_room_name', roomName)
-                    .neq('status', 'completed'); // Only update if agent didn't already
+                    .in('status', ['dispatching', 'ringing', 'connected', 'in_progress']);
 
                 if (error) console.error('Webhook DB Error:', error);
+
+                const campaignId = roomCallRows?.[0]?.campaign_id as string | undefined;
+                if (campaignId) {
+                    await reconcileCampaignStatus(campaignId);
+                }
             }
         }
 

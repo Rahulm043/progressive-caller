@@ -36,6 +36,18 @@ export async function POST(req: Request) {
             agentConfig as Partial<AgentRuntimeConfig>,
         );
         const starts_at = startsAt ? new Date(startsAt).toISOString() : null;
+        const normalizedNumbers = Array.from(
+            new Set(
+                phoneNumbers
+                    .map((num: string) => num.trim())
+                    .filter(Boolean)
+                    .map((num: string) => (num.startsWith('+') ? num : `+91${num}`)),
+            ),
+        );
+
+        if (normalizedNumbers.length === 0) {
+            return NextResponse.json({ error: 'At least one valid phone number is required.' }, { status: 400 });
+        }
 
         // Format data for bulk insert
         const { data: campaign, error: campErr } = await supabase
@@ -55,14 +67,28 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: campErr?.message || 'Failed to create campaign' }, { status: 500 });
         }
 
-        const callsToInsert = phoneNumbers.map((num: string) => ({
-            phone_number: num.trim().startsWith('+') ? num.trim() : `+91${num.trim()}`, // Ensure proper formatting
+        const { data: tailSequence, error: seqErr } = await supabase
+            .from('calls')
+            .select('sequence')
+            .order('sequence', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (seqErr) {
+            return NextResponse.json({ error: seqErr.message }, { status: 500 });
+        }
+
+        const baseSequence = typeof tailSequence?.sequence === 'number' ? tailSequence.sequence : 0;
+
+        const callsToInsert = normalizedNumbers.map((num: string, index: number) => ({
+            phone_number: num,
             status: 'queued',
             preset_id: resolvedAgentConfig.presetId,
             agent_config: resolvedAgentConfig,
             agent_config_snapshot: resolvedAgentConfig,
             campaign_id: campaign.id,
             starts_at,
+            sequence: baseSequence + index + 1,
         }));
 
         let insertResult = await supabase
@@ -74,7 +100,15 @@ export async function POST(req: Request) {
             console.warn('Supabase schema does not include preset_id/agent_config yet; retrying with the base queue payload.');
             insertResult = await supabase
                 .from('calls')
-                .insert(callsToInsert.map(({ phone_number, status }) => ({ phone_number, status })))
+                .insert(
+                    callsToInsert.map(({ phone_number, status, campaign_id, starts_at, sequence }) => ({
+                        phone_number,
+                        status,
+                        campaign_id,
+                        starts_at,
+                        sequence,
+                    })),
+                )
                 .select();
         }
 

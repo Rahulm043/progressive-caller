@@ -792,8 +792,11 @@ export function ReactShaderToy({
       gl.uniform4fv(dateUniform, [year, month, day, time]);
     }
     if (uniformsRef.current.iFrame?.isNeeded) {
+      const u = uniformsRef.current.iFrame;
       const timeDeltaUniform = gl.getUniformLocation(shaderProgramRef.current, UNIFORM_FRAME);
-      gl.uniform1i(timeDeltaUniform, (uniformsRef.current.iFrame.value as number)++);
+      if (typeof u.value === 'number') {
+        gl.uniform1i(timeDeltaUniform, u.value++);
+      }
     }
     if (texturesArrRef.current.length > 0) {
       for (let index = 0; index < texturesArrRef.current.length; index++) {

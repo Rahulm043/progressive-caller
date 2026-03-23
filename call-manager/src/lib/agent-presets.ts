@@ -19,7 +19,10 @@ export interface AgentRuntimeConfig {
   ttsLanguage: string;
   turnDetection: TurnDetectionMode;
   minEndpointingDelay: number;
+  language: string;
   prompt: string;
+  greetingInstruction: string;
+  recipientProfile: string;
 }
 
 export interface AgentPresetDefinition {
@@ -50,14 +53,67 @@ Do not use markdown, lists, or long monologues.
 Do not end the call on your own.
 Only stop speaking when the user has clearly finished or the call has naturally ended.`;
 
-const createPrompt = (languageClause: string, body: string = PROMPT_TAIL) => `You are Riya from Progressive AI.
-${languageClause}
-${body}`;
+const DEFAULT_LANGUAGE = 'English';
+const PERSONA_LINE = 'You are Riya from Progressive AI.';
 
-const normalizePrompt = (preset: AgentPresetDefinition, prompt?: string) => {
-  const source = (prompt || preset.defaultConfig.prompt).trim();
-  const body = source.split('\n').slice(2).join('\n').trim();
-  return createPrompt(preset.languagePromptLine, body || PROMPT_TAIL);
+const normalizeText = (value?: string | null) => (typeof value === 'string' ? value.trim() : '');
+
+const extractPromptBody = (source: string) => {
+  const trimmed = source.trim();
+  if (!trimmed) return PROMPT_TAIL;
+
+  const lines = trimmed.split('\n');
+  if (lines[0]?.trim() !== PERSONA_LINE) {
+    return trimmed;
+  }
+
+  let idx = 1;
+  while (idx < lines.length && !lines[idx].trim()) idx += 1;
+  if (idx < lines.length) idx += 1; // language line
+  while (idx < lines.length && !lines[idx].trim()) idx += 1;
+
+  if ((lines[idx] || '').trim().toLowerCase() === 'recipient profile:') {
+    idx += 1;
+    while (idx < lines.length && lines[idx].trim()) idx += 1;
+  }
+
+  while (idx < lines.length && !lines[idx].trim()) idx += 1;
+  const body = lines.slice(idx).join('\n').trim();
+  return body || PROMPT_TAIL;
+};
+
+const buildLanguageClause = (preset: AgentPresetDefinition, language: string) => {
+  const normalizedLanguage = normalizeText(language) || normalizeText(preset.defaultConfig.language) || DEFAULT_LANGUAGE;
+  if (normalizedLanguage.toLowerCase() === normalizeText(preset.defaultConfig.language).toLowerCase()) {
+    return preset.languagePromptLine;
+  }
+  return `Speak in ${normalizedLanguage} by default unless the user clearly asks to switch languages.`;
+};
+
+const createPrompt = (
+  languageClause: string,
+  body: string = PROMPT_TAIL,
+  recipientProfile?: string,
+) => {
+  const normalizedRecipientProfile = normalizeText(recipientProfile);
+  const recipientSection = normalizedRecipientProfile
+    ? `Recipient profile:\n${normalizedRecipientProfile}\n\n`
+    : '';
+
+  return `${PERSONA_LINE}
+${languageClause}
+${recipientSection}${body}`;
+};
+
+const normalizePrompt = (
+  preset: AgentPresetDefinition,
+  prompt: string | undefined,
+  language: string,
+  recipientProfile: string,
+) => {
+  const source = normalizeText(prompt) || normalizeText(preset.defaultConfig.prompt);
+  const body = extractPromptBody(source);
+  return createPrompt(buildLanguageClause(preset, language), body, recipientProfile);
 };
 
 export const AGENT_PRESETS: AgentPresetDefinition[] = [
@@ -82,7 +138,11 @@ export const AGENT_PRESETS: AgentPresetDefinition[] = [
       ttsLanguage: 'hi-IN',
       turnDetection: 'multilingual',
       minEndpointingDelay: 0.28,
+      language: 'English',
       prompt: createPrompt('Speak in English by default unless the user clearly speaks another language first.'),
+      greetingInstruction:
+        'Greet the person naturally in English in one short sentence. Say you are Riya from Progressive AI, briefly mention you are calling to introduce voice agents and AI automations for businesses, and ask if now is a good time to talk. Do not sound scripted or ask if it is a bad time.',
+      recipientProfile: '',
     },
   },
   {
@@ -106,7 +166,11 @@ export const AGENT_PRESETS: AgentPresetDefinition[] = [
       ttsLanguage: 'multi',
       turnDetection: 'multilingual',
       minEndpointingDelay: 0.28,
+      language: 'English',
       prompt: createPrompt('Speak in English by default unless the user clearly speaks another language first.'),
+      greetingInstruction:
+        'Greet the person naturally in English in one short sentence. Say you are Riya from Progressive AI, briefly mention you are calling to introduce voice agents and AI automations for businesses, and ask if now is a good time to talk. Do not sound scripted or ask if it is a bad time.',
+      recipientProfile: '',
     },
   },
   {
@@ -130,7 +194,11 @@ export const AGENT_PRESETS: AgentPresetDefinition[] = [
       ttsLanguage: 'hi-IN',
       turnDetection: 'multilingual',
       minEndpointingDelay: 0.28,
+      language: 'Hindi',
       prompt: createPrompt('Speak in Hindi or natural Hinglish by default unless the user clearly speaks English first.'),
+      greetingInstruction:
+        'Greet the person naturally in Hindi or natural Hinglish in one short sentence. Say you are Riya from Progressive AI, briefly mention that you are calling to introduce voice agents and AI automations for businesses, and ask if now is a good time to talk. Keep the tone warm, respectful, and natural. Do not sound scripted or ask if it is a bad time.',
+      recipientProfile: '',
     },
   },
   {
@@ -154,7 +222,11 @@ export const AGENT_PRESETS: AgentPresetDefinition[] = [
       ttsLanguage: 'multi',
       turnDetection: 'multilingual',
       minEndpointingDelay: 0.28,
+      language: 'Hindi',
       prompt: createPrompt('Speak in Hindi or natural Hinglish by default unless the user clearly speaks English first.'),
+      greetingInstruction:
+        'Greet the person naturally in Hindi or natural Hinglish in one short sentence. Say you are Riya from Progressive AI, briefly mention that you are calling to introduce voice agents and AI automations for businesses, and ask if now is a good time to talk. Keep the tone warm, respectful, and natural. Do not sound scripted or ask if it is a bad time.',
+      recipientProfile: '',
     },
   },
   {
@@ -178,7 +250,11 @@ export const AGENT_PRESETS: AgentPresetDefinition[] = [
       ttsLanguage: 'multi',
       turnDetection: 'none',
       minEndpointingDelay: 0.3,
+      language: 'Bengali',
       prompt: createPrompt('Speak in Bengali by default unless the user clearly speaks English first.'),
+      greetingInstruction:
+        'Greet the person naturally in Bengali in one short sentence. Say you are Riya from Progressive AI, briefly mention that you are calling to introduce voice agents and AI automations for businesses, and ask if now is a good time to talk. Keep the tone warm, respectful, and natural. Do not sound scripted or ask if it is a bad time.',
+      recipientProfile: '',
     },
   },
   {
@@ -203,9 +279,13 @@ export const AGENT_PRESETS: AgentPresetDefinition[] = [
       ttsLanguage: 'multi',
       turnDetection: 'none',
       minEndpointingDelay: 0.15,
+      language: 'Bengali / English / Hindi',
       prompt: createPrompt(
         'Speak casually. Start in Bengali by default, and adapt naturally to English or Hindi when the user does. Stay within Bengali, English, or Hindi only.',
       ),
+      greetingInstruction:
+        'Greet the person naturally in Bengali in one short sentence. Say you are Riya from Progressive AI, briefly mention that you are calling to introduce voice agents and AI automations for businesses, and ask if now is a good time to talk. Keep the tone warm, respectful, and natural. Do not sound scripted. If the user responds in English or Hindi, adapt naturally.',
+      recipientProfile: '',
     },
   },
 ];
@@ -233,10 +313,22 @@ export function resolveAgentRuntimeConfig(
   overrides: Partial<AgentRuntimeConfig> = {},
 ): AgentRuntimeConfig {
   const preset = getAgentPreset(presetId);
-  const prompt = normalizePrompt(preset, overrides.prompt);
+  const language =
+    normalizeText(overrides.language)
+    || normalizeText(preset.defaultConfig.language)
+    || DEFAULT_LANGUAGE;
+  const greetingInstruction =
+    normalizeText(overrides.greetingInstruction)
+    || normalizeText(preset.defaultConfig.greetingInstruction);
+  const recipientProfile = normalizeText(overrides.recipientProfile);
+  const prompt = normalizePrompt(preset, overrides.prompt, language, '');
+
   return {
     ...preset.defaultConfig,
     ...overrides,
+    language,
+    greetingInstruction,
+    recipientProfile,
     prompt,
     presetId: preset.id,
   };

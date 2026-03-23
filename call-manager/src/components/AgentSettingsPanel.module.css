@@ -1,242 +1,309 @@
 .panel {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(10, 16, 30, 0.96));
-  border: 1px solid var(--card-border);
-  border-radius: 1.25rem;
-  padding: 1.5rem;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 0.75rem 0;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
   align-items: flex-start;
-  margin-bottom: 1rem;
+  gap: 1rem;
 }
 
 .kicker {
+  color: var(--foreground-dim);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.72rem;
-  color: #38bdf8;
-  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-size: 0.65rem;
+  font-weight: 600;
   margin-bottom: 0.35rem;
 }
 
 .header h2 {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
+  font-family: var(--font-display);
   margin-bottom: 0.35rem;
 }
 
 .description {
-  color: #94a3b8;
+  color: var(--foreground-dim);
+  font-size: 0.85rem;
   line-height: 1.5;
-  max-width: 60ch;
 }
 
 .badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.4rem;
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  background: rgba(56, 189, 248, 0.08);
-  color: #7dd3fc;
-  border-radius: 999px;
-  padding: 0.45rem 0.8rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 0.6rem;
-  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.5rem;
 }
 
 .tab {
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--background-elevated);
   border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.03);
-  color: #cbd5e1;
-  border-radius: 0.9rem;
-  padding: 0.85rem 0.9rem;
   text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  transition: all 0.15s ease;
+}
+
+.tab span {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
 }
 
 .tab small {
-  color: #64748b;
+  color: var(--foreground-dim);
+  font-size: 0.7rem;
 }
 
 .tabActive {
-  border-color: rgba(13, 204, 242, 0.35);
-  background: rgba(13, 204, 242, 0.1);
-  color: white;
+  background: var(--accent-soft);
+  border-color: rgba(20, 184, 166, 0.2);
+}
+
+.tabActive span {
+  color: var(--accent);
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .label {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.4rem;
-  color: #94a3b8;
-  font-size: 0.82rem;
+  font-size: 0.65rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--foreground-dim);
 }
 
 .select,
-.readonlyInput,
-.promptTextarea {
+.input,
+.readonlyInput {
   width: 100%;
-  border-radius: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--background-elevated);
   border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.03);
-  color: #e2e8f0;
-  padding: 0.85rem 0.95rem;
+  color: var(--foreground);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  transition: all 0.15s ease;
+}
+
+.select:focus {
+  border-color: var(--accent);
   outline: none;
 }
 
-.select:focus,
-.readonlyInput:focus,
-.promptTextarea:focus {
-  border-color: rgba(13, 204, 242, 0.45);
-  box-shadow: 0 0 0 1px rgba(13, 204, 242, 0.18);
+.input:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .readonlyInput {
-  color: #94a3b8;
+  opacity: 0.6;
+  cursor: default;
+}
+
+.compactTextarea {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--background-elevated);
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  line-height: 1.45;
+  min-height: 108px;
+  resize: vertical;
+  transition: border-color 0.15s ease;
+}
+
+.compactTextarea:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .promptField {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  gap: 0.75rem;
+}
+
+.inlineActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .promptHeader {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  align-items: center;
 }
 
 .promptLabel {
-  color: #cbd5e1;
-  font-size: 0.9rem;
+  font-size: 0.65rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--foreground-dim);
 }
 
-.promptActions,
-.promptFooter {
+.promptActions {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  flex-wrap: wrap;
-}
-
-.promptFooter {
-  justify-content: space-between;
+  gap: 0.4rem;
 }
 
 .promptTextarea {
-  min-height: 220px;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--background-elevated);
+  border: 1px solid var(--card-border);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  min-height: 250px;
   resize: vertical;
-  line-height: 1.55;
-  font-family: inherit;
-  white-space: pre-wrap;
+  transition: border-color 0.15s ease;
+}
+
+.promptTextarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.promptFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .helperText {
-  color: #64748b;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  color: var(--foreground-dim);
 }
 
-.promptError {
-  color: #fca5a5;
-  font-size: 0.85rem;
-}
-
+.resetButton,
 .ghostButton,
-.primaryButton,
-.resetButton {
-  border: 1px solid var(--card-border);
-  border-radius: 999px;
-  padding: 0.5rem 0.85rem;
-  display: inline-flex;
+.primaryButton {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.82rem;
-  font-weight: 600;
+  transition: all 0.15s ease;
 }
 
-.ghostButton,
-.resetButton {
-  background: rgba(255, 255, 255, 0.03);
-  color: #cbd5e1;
+.ghostButton {
+  background: var(--background-elevated);
+  border: 1px solid var(--card-border);
+  color: var(--foreground-muted);
+}
+
+.ghostButton:hover {
+  color: var(--foreground);
+  background: var(--background-subtle);
 }
 
 .primaryButton {
-  background: rgba(13, 204, 242, 0.16);
-  color: #dffbff;
-  border-color: rgba(13, 204, 242, 0.35);
+  background: var(--accent);
+  color: #fff;
+  border: none;
 }
 
-.ghostButton:disabled,
-.primaryButton:disabled,
-.resetButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.primaryButton:hover {
+  background: var(--accent-strong);
+}
+
+.resetButton {
+  color: var(--foreground-dim);
+}
+
+.resetButton:hover {
+  color: var(--foreground-muted);
+}
+
+.promptError {
+  padding: 0.6rem;
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.1);
+  color: var(--status-failed);
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .summary {
-  margin-top: 1rem;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
-  border-top: 1px solid var(--card-border);
-  padding-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1.25rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--background);
+  border: 1px solid var(--card-border);
+  margin-top: 0.5rem;
 }
 
-.summary > div {
+.summary>div {
   display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .summaryLabel {
-  color: #64748b;
-  font-size: 0.75rem;
+  font-size: 0.55rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
+  color: var(--foreground-dim);
+  font-weight: 700;
 }
 
-@media (max-width: 900px) {
-  .grid,
-  .summary {
-    grid-template-columns: 1fr 1fr;
-  }
+.summary strong {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  white-space: nowrap;
 }
 
-@media (max-width: 640px) {
-  .header {
-    flex-direction: column;
-  }
-
-  .grid,
-  .summary {
-    grid-template-columns: 1fr;
-  }
+.summary>div:not(:last-child)::after {
+  content: "•";
+  margin-left: 1rem;
+  color: var(--card-border);
+  font-size: 0.75rem;
 }

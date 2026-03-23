@@ -1,9 +1,27 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import styles from './page.module.css';
 import { AgentChatTranscript } from '@/components/agent-chat-transcript';
+
+type TranscriptMessage = {
+  type?: 'message';
+  role?: string;
+  content?: string;
+  created_at?: string;
+};
+
+type AgentConfigSnapshot = {
+  prompt?: string;
+  llmModel?: string;
+  llm_model?: string;
+  ttsModel?: string;
+  tts_model?: string;
+  sttModel?: string;
+  stt_model?: string;
+};
 
 interface Campaign {
   id: string;
@@ -12,18 +30,25 @@ interface Campaign {
   status: string;
   starts_at: string | null;
   created_at: string;
-  agent_config_snapshot: any;
+  agent_config_snapshot: AgentConfigSnapshot | null;
 }
 
 interface Call {
   id: string;
   phone_number: string;
   status: string;
+  effective_status?: string;
+  is_active?: boolean;
+  effective_duration_seconds?: number | null;
   sequence?: number | null;
   starts_at?: string | null;
   created_at: string;
   duration_seconds: number | null;
-  transcript: any;
+  transcript: TranscriptMessage[] | {
+    messages?: TranscriptMessage[];
+    chat_history?: TranscriptMessage[];
+    telemetry_messages?: TranscriptMessage[];
+  } | null;
 }
 
 export default function CampaignDetailPage() {
@@ -35,7 +60,7 @@ export default function CampaignDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -54,11 +79,18 @@ export default function CampaignDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
-    if (id) fetchData();
-  }, [id]);
+    if (!id) return;
+    fetchData();
+    const timer = window.setInterval(() => {
+      fetchData();
+    }, 5000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [id, fetchData]);
 
   const mutateAction = async (action: 'start_now' | 'pause' | 'resume') => {
     setActionLoading(true);
@@ -79,8 +111,12 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const queued = calls.filter((c) => c.status === 'queued').sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-  const active = calls.filter((c) => ['dispatching', 'in_progress'].includes(c.status));
+  const queued = calls.filter((c) => c.status === 'queued').sort((a, b) => {
+    if (a.sequence == null) return 1;
+    if (b.sequence == null) return -1;
+    return a.sequence - b.sequence;
+  });
+  const active = calls.filter((c) => c.is_active === true);
   const finished = calls.filter((c) => ['completed', 'failed'].includes(c.status));
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [filter, setFilter] = useState<'all' | 'user' | 'agent'>('all');
@@ -90,7 +126,7 @@ export default function CampaignDetailPage() {
     const messages = Array.isArray(transcript)
       ? transcript
       : transcript.messages || transcript.chat_history || transcript.telemetry_messages || [];
-    return messages.map((message: any, index: number) => ({
+    return messages.map((message: TranscriptMessage, index: number) => ({
       id: index.toString(),
       timestamp: message.created_at ? new Date(message.created_at).getTime() : Date.now(),
       from: { isLocal: message.role === 'user' } as { isLocal: boolean },
@@ -108,7 +144,7 @@ export default function CampaignDetailPage() {
   return (
     <div className={styles.shell}>
       {loading ? (
-        <div className={styles.card}>Loading…</div>
+        <div className={styles.card}>Loading...</div>
       ) : error ? (
         <div className={styles.error}>{error}</div>
       ) : campaign ? (
@@ -117,12 +153,13 @@ export default function CampaignDetailPage() {
             <div>
               <p className={styles.kicker}>Campaign</p>
               <h1>{campaign.name}</h1>
-              <p className={styles.meta}>Preset {campaign.preset_id} · Created {new Date(campaign.created_at).toLocaleString()}</p>
+              <p className={styles.meta}>Preset {campaign.preset_id} • Created {new Date(campaign.created_at).toLocaleString()}</p>
               <p className={styles.meta}>
                 {campaign.starts_at ? `Starts at ${new Date(campaign.starts_at).toLocaleString()}` : 'Starts immediately'}
               </p>
             </div>
             <div className={styles.actions}>
+              <Link href="/campaigns">All campaigns</Link>
               <button disabled={actionLoading} onClick={() => mutateAction('start_now')}>Start now</button>
               {campaign.status === 'paused' ? (
                 <button disabled={actionLoading} onClick={() => mutateAction('resume')}>Resume</button>
@@ -138,8 +175,8 @@ export default function CampaignDetailPage() {
               <h3>{queued.length}</h3>
               {queued[0] && (
                 <p className={styles.meta}>
-                  Next: {queued[0].phone_number} · Seq {queued[0].sequence ?? '—'}
-                  {queued[0].starts_at && ` · starts ${new Date(queued[0].starts_at).toLocaleTimeString()}`}
+                  Next: {queued[0].phone_number} | Seq {queued[0].sequence ?? '--'}
+                  {queued[0].starts_at && ` | starts ${new Date(queued[0].starts_at).toLocaleTimeString()}`}
                 </p>
               )}
             </div>
@@ -164,15 +201,15 @@ export default function CampaignDetailPage() {
               </div>
               <div className={styles.card}>
                 <p className={styles.kicker}>LLM</p>
-                <strong>{campaign.agent_config_snapshot?.llmModel || campaign.agent_config_snapshot?.llm_model || '—'}</strong>
+                <strong>{campaign.agent_config_snapshot?.llmModel || campaign.agent_config_snapshot?.llm_model || '--'}</strong>
               </div>
               <div className={styles.card}>
                 <p className={styles.kicker}>TTS</p>
-                <strong>{campaign.agent_config_snapshot?.ttsModel || campaign.agent_config_snapshot?.tts_model || '—'}</strong>
+                <strong>{campaign.agent_config_snapshot?.ttsModel || campaign.agent_config_snapshot?.tts_model || '--'}</strong>
               </div>
               <div className={styles.card}>
                 <p className={styles.kicker}>STT</p>
-                <strong>{campaign.agent_config_snapshot?.sttModel || campaign.agent_config_snapshot?.stt_model || '—'}</strong>
+                <strong>{campaign.agent_config_snapshot?.sttModel || campaign.agent_config_snapshot?.stt_model || '--'}</strong>
               </div>
             </div>
             {campaign.agent_config_snapshot?.prompt && (
@@ -194,7 +231,7 @@ export default function CampaignDetailPage() {
                 {queued.map((c) => (
                   <div key={c.id} className={styles.row}>
                     <span>{c.phone_number}</span>
-                    <span className={styles.meta}>Seq {c.sequence ?? '—'}</span>
+                    <span className={styles.meta}>Seq {c.sequence ?? '--'}</span>
                     <span className={styles.meta}>{c.starts_at ? new Date(c.starts_at).toLocaleTimeString() : 'now'}</span>
                   </div>
                 ))}
@@ -213,8 +250,8 @@ export default function CampaignDetailPage() {
                 {active.map((c) => (
                   <div key={c.id} className={styles.row}>
                     <span>{c.phone_number}</span>
-                    <span className={styles.meta}>{c.status}</span>
-                    <span className={styles.meta}>Seq {c.sequence ?? '—'}</span>
+                    <span className={styles.meta}>{c.effective_status || c.status}</span>
+                    <span className={styles.meta}>Seq {c.sequence ?? '--'}</span>
                   </div>
                 ))}
               </div>
@@ -246,7 +283,7 @@ export default function CampaignDetailPage() {
                   <div>
                     <p className={styles.kicker}>Call log</p>
                     <h3>{selectedCall.phone_number}</h3>
-                    <p className={styles.meta}>{selectedCall.status}</p>
+                    <p className={styles.meta}>{selectedCall.effective_status || selectedCall.status}</p>
                   </div>
                   <button className={styles.closeBtn} onClick={() => setSelectedCall(null)}>Close</button>
                 </div>

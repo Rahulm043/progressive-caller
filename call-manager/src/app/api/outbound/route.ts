@@ -23,13 +23,14 @@ const isMissingColumnError = (error: { code?: string | null; message?: string | 
 type Mode = 'now' | 'queue';
 
 export async function POST(req: Request) {
+    let insertedCallId: string | null = null;
     try {
         const body = await req.json();
-        const phoneNumber = body?.phoneNumber;
+        const rawPhoneNumber = body?.phoneNumber;
         const agentConfig = body?.agentConfig as Partial<AgentRuntimeConfig> | undefined;
         const mode: Mode = body?.mode === 'now' ? 'now' : 'queue';
 
-        if (!phoneNumber) {
+        if (!rawPhoneNumber) {
             return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
         }
 
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
         }
 
         const supabase = createClient(supabaseUrl, supabaseKey);
-        const roomName = `call-${phoneNumber.replace('+', '')}-${Math.floor(Math.random() * 10000)}`;
+        const phoneNumber = rawPhoneNumber.trim().startsWith('+') ? rawPhoneNumber.trim() : `+91${rawPhoneNumber.trim()}`;
         const resolvedAgentConfig = resolveAgentRuntimeConfig(
             agentConfig?.presetId || DEFAULT_AGENT_RUNTIME_CONFIG.presetId,
             agentConfig,
@@ -63,8 +64,7 @@ export async function POST(req: Request) {
 
         const callInsertPayload = {
             phone_number: phoneNumber,
-            status: 'dispatching',
-            livekit_room_name: roomName,
+            status: mode === 'now' ? 'dispatching' : 'queued',
             preset_id: resolvedAgentConfig.presetId,
             agent_config: resolvedAgentConfig,
             agent_config_snapshot: resolvedAgentConfig,
@@ -84,8 +84,7 @@ export async function POST(req: Request) {
                 .from('calls')
                 .insert({
                     phone_number: phoneNumber,
-                    status: 'dispatching',
-                    livekit_room_name: roomName,
+                    status: mode === 'now' ? 'dispatching' : 'queued',
                 })
                 .select()
                 .single();
@@ -96,6 +95,29 @@ export async function POST(req: Request) {
         if (dbError) {
             console.error('Supabase Insert Error:', dbError);
             return NextResponse.json({ error: 'Failed to register call in database' }, { status: 500 });
+        }
+
+        insertedCallId = callRecord.id;
+
+        // Queue-only mode: defer dispatch to the campaign runner backend.
+        if (mode === 'queue') {
+            return NextResponse.json({
+                success: true,
+                queued: true,
+                callId: callRecord.id,
+                message: 'Call added to queue. It will be picked by the campaign runner.',
+            });
+        }
+
+        const roomName = `call-${phoneNumber.replace('+', '')}-${Math.floor(Math.random() * 10000)}`;
+        const { error: preDispatchUpdateError } = await supabase
+            .from('calls')
+            .update({ livekit_room_name: roomName, status: 'dispatching' })
+            .eq('id', callRecord.id);
+
+        if (preDispatchUpdateError) {
+            console.error('Failed to store room before dispatch:', preDispatchUpdateError);
+            return NextResponse.json({ error: 'Failed to prepare call dispatch.' }, { status: 500 });
         }
 
         // 2. Dispatch Agent with call_id in metadata
@@ -111,6 +133,10 @@ export async function POST(req: Request) {
                     phone_number: phoneNumber,
                     call_id: callRecord.id,
                     preset_id: resolvedAgentConfig.presetId,
+                    language: resolvedAgentConfig.language,
+                    prompt: resolvedAgentConfig.prompt,
+                    greeting_instruction: resolvedAgentConfig.greetingInstruction,
+                    recipient_profile: resolvedAgentConfig.recipientProfile,
                     agent_config: resolvedAgentConfig,
                 })
             }
@@ -129,6 +155,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({
             success: true,
+            queued: false,
             roomName,
             callId: callRecord.id,
             participantId: dispatch.id
@@ -136,6 +163,17 @@ export async function POST(req: Request) {
 
     } catch (error: unknown) {
         console.error('Call Trigger Error:', error);
+        if (insertedCallId && supabaseUrl && supabaseKey) {
+            try {
+                const supabase = createClient(supabaseUrl, supabaseKey);
+                await supabase
+                    .from('calls')
+                    .update({ status: 'failed' })
+                    .eq('id', insertedCallId);
+            } catch (updateError) {
+                console.error('Failed to mark failed call after dispatch error:', updateError);
+            }
+        }
         // Return the specific error message from LiveKit for better debugging
         return NextResponse.json({
             error: error instanceof Error ? error.message : 'Internal Server Error',

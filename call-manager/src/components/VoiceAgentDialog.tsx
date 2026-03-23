@@ -8,7 +8,7 @@ import {
     useRoomContext,
 } from '@livekit/components-react';
 import { ConnectionState, RoomEvent } from 'livekit-client';
-import { X, MessageSquare, Power } from 'lucide-react';
+import { X, MessageSquare, Power, Radio, RefreshCw } from 'lucide-react';
 import { AgentRuntimeConfig } from '@/lib/agent-presets';
 import styles from './VoiceAgentDialog.module.css';
 
@@ -61,19 +61,19 @@ export const VoiceAgentDialog = ({ isOpen, onClose, agentConfig }: VoiceAgentDia
     if (!isOpen) return null;
 
     return (
-        <div className={styles.overlay}>
-            <div className={styles.dialog}>
+        <div className={styles.overlay} onClick={onClose}>
+            <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
                 <header className={styles.header}>
                     <div className={styles.titleGroup}>
                         <div className={styles.liveIndicator} />
                         <div>
-                            <h2>Talk to the Agent</h2>
-                            <p style={{ margin: '0.25rem 0 0', color: '#666', fontSize: '0.8rem' }}>
+                            <h2>Real-time Simulation</h2>
+                            <p style={{ margin: '0.25rem 0 0', color: 'var(--foreground-muted)', fontSize: '0.75rem' }}>
                                 {agentConfig.presetId} {roomName ? `· ${roomName}` : ''}
                             </p>
                         </div>
                     </div>
-                    <button className={styles.closeBtn} onClick={onClose}>
+                    <button className={styles.closeBtn} onClick={onClose} aria-label="Terminate session">
                         <X size={20} />
                     </button>
                 </header>
@@ -92,20 +92,21 @@ export const VoiceAgentDialog = ({ isOpen, onClose, agentConfig }: VoiceAgentDia
                                 <div className={styles.agentAvatar}>
                                     <BarVisualizer className={styles.bars} />
                                 </div>
-                                <p className={styles.statusText}>Agent is listening...</p>
+                                <p className={styles.statusText}>Active & Listening</p>
                             </div>
 
                             <div className={styles.transcriptSection}>
                                 <div className={styles.sectionHeader}>
-                                    <MessageSquare size={16} />
-                                    <span>Real-time Transcript</span>
+                                    <Radio size={14} className={styles.liveIndicator} />
+                                    <span>Intelligence Stream</span>
                                 </div>
                                 <TranscriptView />
                             </div>
 
                             <div className={styles.controls}>
                                 <button className={styles.endCallBtn} onClick={onClose}>
-                                    <Power size={20} /> End Interaction
+                                    <Power size={18} />
+                                    End Interaction
                                 </button>
                             </div>
 
@@ -113,7 +114,8 @@ export const VoiceAgentDialog = ({ isOpen, onClose, agentConfig }: VoiceAgentDia
                         </LiveKitRoom>
                     ) : (
                         <div className={styles.loading}>
-                            {isConnecting ? 'Initializing secure session...' : 'Waiting for connection...'}
+                            <RefreshCw size={24} className="animate-spin" style={{ marginBottom: '1rem', opacity: 0.5 }} />
+                            <p>{isConnecting ? 'Establishing secure relay...' : 'Awaiting handshake...'}</p>
                         </div>
                     )}
                 </div>
@@ -171,17 +173,14 @@ const TranscriptView = () => {
 
     return (
         <div className={styles.transcriptList} ref={scrollRef}>
-            <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                Room status: {room?.state ?? connectionState}
-            </div>
             {messages.length === 0 ? (
                 <div className={styles.emptyTranscript}>
-                    Speak to start the conversation.
+                    The transcript stream will appear once the conversation begins.
                 </div>
             ) : (
                 messages.map((m, i) => (
                     <div key={i} className={`${styles.bubble} ${styles[m.sender.toLowerCase()]}`}>
-                        <div className={styles.senderLabel}>{m.sender}</div>
+                        <div className={styles.senderLabel}>{m.sender === 'User' ? 'You' : 'Agent'}</div>
                         <div className={styles.text}>{m.text}</div>
                     </div>
                 ))

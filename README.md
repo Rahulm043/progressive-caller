@@ -65,6 +65,18 @@ Run the campaign loop when using Supabase-backed call queues:
 uv run python run_campaign.py
 ```
 
+## Campaign Backend Runtime Model
+
+- `run_campaign.py` is the queue worker. It must stay running in the background for queued/scheduled calls to continue when the frontend is closed.
+- Recommended runtime model in production:
+  1. `agent_pro.py start` (LiveKit agent worker)
+  2. `run_campaign.py` (queue + schedule dispatcher)
+  3. `call-manager` frontend (optional operator UI)
+- Queue semantics:
+  - `mode=now` can dispatch immediately (single call flow).
+  - `mode=queue` inserts as `queued` and is picked by `run_campaign.py`.
+- Campaign states are reconciled from call outcomes (`scheduled`, `running`, `completed`, `failed`), and paused campaigns are skipped by the queue worker.
+
 ## Troubleshooting
 
 - Confirm the worker is running before dispatching a call.

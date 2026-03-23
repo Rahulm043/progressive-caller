@@ -70,25 +70,24 @@ export function AgentChatTranscript({
           const title = time.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
           const accentClasses =
             messageOrigin === 'user'
-              ? 'border-cyan-500/20 bg-cyan-500/8'
-              : 'border-emerald-500/20 bg-emerald-500/8';
+              ? 'border-[var(--accent-glow)] bg-[var(--accent-soft)]'
+              : 'border-[var(--card-border)] bg-[var(--background-elevated)]';
           const labelClasses =
             messageOrigin === 'user'
-              ? 'text-cyan-200'
-              : 'text-emerald-200';
+              ? 'text-[var(--accent)]'
+              : 'text-[var(--foreground-muted)]';
 
           return (
             <div
               key={id}
-              className={`w-full rounded-2xl border px-4 py-3 shadow-sm ${accentClasses} ${
-                messageOrigin === 'user' ? 'ml-auto max-w-[92%]' : 'mr-auto max-w-[92%]'
-              }`}
+              className={`w-full rounded-2xl border px-5 py-4 shadow-sm transition-all duration-300 hover:shadow-md ${accentClasses} ${messageOrigin === 'user' ? 'ml-auto max-w-[85%]' : 'mr-auto max-w-[85%]'
+                }`}
             >
-              <div className="flex items-center justify-between gap-3 text-[0.72rem] uppercase tracking-[0.14em] text-slate-400">
+              <div className="flex items-center justify-between gap-3 text-[0.65rem] font-bold uppercase tracking-[0.1em]">
                 <span className={labelClasses}>{messageOrigin === 'user' ? 'Caller' : 'Agent'}</span>
-                <span>{title}</span>
+                <span className="text-[var(--foreground-muted)] opacity-50">{title}</span>
               </div>
-              <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-100">
+              <div className="mt-3 whitespace-pre-wrap text-[0.95rem] leading-7 text-[var(--foreground)]">
                 {message}
               </div>
             </div>

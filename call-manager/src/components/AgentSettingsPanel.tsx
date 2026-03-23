@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Languages, Mic, MessageSquareText, PencilLine, RotateCcw, Save, Speaker, X } from 'lucide-react';
+import { CheckCircle2, Languages, Mic, MessageSquareText, PencilLine, RotateCcw, Save, Speaker, UserRound, X } from 'lucide-react';
 import {
   AGENT_PRESETS,
   AgentPresetId,
@@ -68,23 +68,30 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
     }
   };
 
+  const handleResetToPresetDefaults = () => {
+    const savedPrompt = promptOverrides[value.presetId];
+    onChange(resolveAgentRuntimeConfig(value.presetId, savedPrompt ? { prompt: savedPrompt } : {}));
+    setPromptError(null);
+    setIsPromptEditing(false);
+  };
+
   return (
     <section className={styles.panel}>
-      <div className={styles.header}>
+      <header className={styles.header}>
         <div>
-          <p className={styles.kicker}>Agent Settings</p>
-          <h2>Preset-driven voice stack</h2>
+          <p className={styles.kicker}>Runtime Configuration</p>
+          <h2>Agent Stack</h2>
           <p className={styles.description}>
-            Select a preset, inspect the effective model selections, and edit the prompt before dispatching the next call.
+            Fine-tune the voice intelligence, selection logic, and core personality before dispatching.
           </p>
         </div>
         <div className={styles.badge}>
-          <CheckCircle2 size={16} />
+          <CheckCircle2 size={14} />
           <span>{activePreset.languageLabel}</span>
         </div>
-      </div>
+      </header>
 
-      <div className={styles.tabs} role="tablist" aria-label="Agent presets">
+      <div className={styles.tabs} role="tablist" aria-label="Available presets">
         {AGENT_PRESETS.map((preset) => (
           <button
             key={preset.id}
@@ -101,11 +108,11 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
       </div>
 
       <div className={styles.grid}>
-        <label className={styles.field}>
-          <span className={styles.label}>
+        <div className={styles.field}>
+          <label className={styles.label}>
             <Mic size={14} />
-            STT
-          </span>
+            Transcription (STT)
+          </label>
           <select
             className={styles.select}
             value={value.sttModel}
@@ -117,21 +124,13 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className={styles.field}>
-          <span className={styles.label}>
-            <Mic size={14} />
-            STT Mode
-          </span>
-          <input className={styles.readonlyInput} value={value.sttMode} readOnly />
-        </label>
-
-        <label className={styles.field}>
-          <span className={styles.label}>
+        <div className={styles.field}>
+          <label className={styles.label}>
             <MessageSquareText size={14} />
-            LLM
-          </span>
+            Reasoning (LLM)
+          </label>
           <select
             className={styles.select}
             value={value.llmModel}
@@ -143,13 +142,13 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className={styles.field}>
-          <span className={styles.label}>
+        <div className={styles.field}>
+          <label className={styles.label}>
             <Speaker size={14} />
-            TTS
-          </span>
+            Synthesis (TTS)
+          </label>
           <select
             className={styles.select}
             value={value.ttsModel}
@@ -161,20 +160,67 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className={styles.field}>
-          <span className={styles.label}>
+        <div className={styles.field}>
+          <label className={styles.label}>
             <Languages size={14} />
-            Locked Language
-          </span>
-          <input className={styles.readonlyInput} value={activePreset.languageLabel} readOnly />
-        </label>
+            Prompt Language
+          </label>
+          <input
+            className={styles.input}
+            value={value.language}
+            onChange={(event) =>
+              onChange(
+                resolveAgentRuntimeConfig(value.presetId, {
+                  ...value,
+                  language: event.target.value,
+                }),
+              )
+            }
+            placeholder="English"
+          />
+        </div>
+      </div>
+
+      <div className={styles.grid}>
+        <div className={styles.field}>
+          <label className={styles.label}>
+            <MessageSquareText size={14} />
+            Greeting Instruction
+          </label>
+          <textarea
+            className={styles.compactTextarea}
+            value={value.greetingInstruction}
+            onChange={(event) => onChange({ ...value, greetingInstruction: event.target.value })}
+            placeholder="How the assistant should greet at call start..."
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label}>
+            <UserRound size={14} />
+            Recipient Profile (Optional)
+          </label>
+          <textarea
+            className={styles.compactTextarea}
+            value={value.recipientProfile}
+            onChange={(event) => onChange({ ...value, recipientProfile: event.target.value })}
+            placeholder="Optional profile details to personalize the call."
+          />
+        </div>
+      </div>
+
+      <div className={styles.inlineActions}>
+        <button type="button" className={styles.resetButton} onClick={handleResetToPresetDefaults}>
+          <RotateCcw size={14} />
+          Reset Agent Defaults
+        </button>
       </div>
 
       <div className={styles.promptField}>
         <div className={styles.promptHeader}>
-          <span className={styles.promptLabel}>Prompt</span>
+          <label className={styles.promptLabel}>System Instructions</label>
           <div className={styles.promptActions}>
             {!isPromptEditing ? (
               <button type="button" className={styles.ghostButton} onClick={handleStartEditing}>
@@ -185,27 +231,27 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
               <>
                 <button type="button" className={styles.ghostButton} onClick={handleCancelEditing} disabled={isSavingPrompt}>
                   <X size={14} />
-                  Cancel
+                  Discard
                 </button>
                 <button type="button" className={styles.primaryButton} onClick={handleSavePrompt} disabled={isSavingPrompt}>
                   <Save size={14} />
-                  {isSavingPrompt ? 'Saving...' : 'Save prompt'}
+                  {isSavingPrompt ? 'Saving...' : 'Apply Changes'}
                 </button>
               </>
             )}
           </div>
         </div>
         <textarea
-          className={styles.promptTextarea}
+          className={isPromptEditing ? styles.promptTextarea : styles.compactTextarea}
           value={isPromptEditing ? promptDraft : value.prompt}
           onChange={(event) => setPromptDraft(event.target.value)}
-          rows={10}
           readOnly={!isPromptEditing}
+          placeholder="Enter the system behavior instructions here..."
         />
-        <div className={styles.promptFooter}>
-          <span className={styles.helperText}>
-            Language is locked to the selected preset and is already baked into the effective prompt.
-          </span>
+        <footer className={styles.promptFooter}>
+          <p className={styles.helperText}>
+            Prompt, greeting, language, and recipient profile are applied per dispatch. Prompt changes can also be saved to Supabase per preset.
+          </p>
           {!isPromptEditing && (
             <button
               type="button"
@@ -216,33 +262,29 @@ export function AgentSettingsPanel({ value, onChange, onSavePrompt, promptOverri
               }}
             >
               <RotateCcw size={14} />
-              Reset to default
+              Restore defaults
             </button>
           )}
-        </div>
+        </footer>
         {promptError && <div className={styles.promptError}>{promptError}</div>}
       </div>
 
       <div className={styles.summary}>
         <div>
-          <span className={styles.summaryLabel}>Effective stack</span>
+          <span className={styles.summaryLabel}>Arch</span>
           <strong>{activePreset.label}</strong>
         </div>
         <div>
-          <span className={styles.summaryLabel}>Selected STT</span>
-          <strong>{value.sttModel}</strong>
-        </div>
-        <div>
-          <span className={styles.summaryLabel}>STT Mode</span>
-          <strong>{value.sttMode}</strong>
-        </div>
-        <div>
-          <span className={styles.summaryLabel}>Selected LLM</span>
+          <span className={styles.summaryLabel}>Inf</span>
           <strong>{value.llmModel}</strong>
         </div>
         <div>
-          <span className={styles.summaryLabel}>Selected TTS</span>
+          <span className={styles.summaryLabel}>Syn</span>
           <strong>{value.ttsModel}</strong>
+        </div>
+        <div>
+          <span className={styles.summaryLabel}>Latency</span>
+          <strong>{(value.sttMode as string) === 'native' ? 'Low' : 'Std'}</strong>
         </div>
       </div>
     </section>
